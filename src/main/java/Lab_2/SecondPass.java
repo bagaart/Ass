@@ -1,4 +1,4 @@
-package Lab_1;
+package Lab_2;
 
 import java.util.ArrayList;
 
@@ -6,17 +6,22 @@ public class SecondPass {
     String ERROR = "";
     ArrayList<String> objCode = new ArrayList<>();
     String[][] opTable = null;
+    String addressingMode;
+    ArrayList<String> modTable = new ArrayList<>();
 
     public void execute(ArrayList<ArrayList<String>> subTable,
                         ArrayList<ArrayList<String>> symTable,
                         String programName,
                         String programLength,
                         int startAddress,
-                        String[][] opTable) {
+                        String[][] opTable,
+                        String addressingMode) {
 
         ERROR = "";
         objCode.clear();
+        modTable.clear();
         this.opTable = opTable;
+        this.addressingMode = addressingMode;
 
         if (subTable == null || subTable.isEmpty()) {
             ERROR = "Ошибка: Не выполнен первый проход";
@@ -31,6 +36,9 @@ public class SecondPass {
         int i = 0;
         for (ArrayList<String> row : subTable) {
             i++;
+
+            boolean op1IsRelative = false;
+            boolean op2IsRelative = false;
 
             String address = row.get(0);
             String operation = row.get(1);
@@ -72,6 +80,11 @@ public class SecondPass {
                         ERROR = i + " -- " + "Ошибка: лишний операнд";
                         return;
                     }
+                    if (op1.startsWith("[") && op1.endsWith("]")){
+                        op1IsRelative = true;
+                    } else {
+                        modTable.add(address);
+                    }
                 }
 
                 if (size == 2){
@@ -94,13 +107,13 @@ public class SecondPass {
                     }
                 }
 
-                op1 = resolveOperand(op1, symTable);
+                op1 = resolveOperand(op1, symTable, Integer.parseInt(address, 16) + size);
                 if (ERROR.length() > 0) {
                     ERROR = i + " -- " + ERROR;
                     return;
                 }
 
-                op2 = resolveOperand(op2, symTable);
+                op2 = resolveOperand(op2, symTable, Integer.parseInt(address, 16) + size);
                 if (ERROR.length() > 0) {
                     ERROR = i + " -- " + ERROR;
                     return;
@@ -112,7 +125,7 @@ public class SecondPass {
             StringBuilder sb = new StringBuilder();
             if (isDirective(operation)) {
                 sb.append("T ").append(address).append(" ");
-                if (!code.isEmpty()) sb.append(String.format("%02X", code.length() / 2)).append(" ");
+                if (!code.isEmpty()) sb.append(String.format("%02X", code.length())).append(" ");
                 sb.append(code);
             } else {
                 int idx = findOperation(operation);
@@ -123,14 +136,23 @@ public class SecondPass {
                 }
 
                 sb.append("T ").append(address).append(" ");
-                sb.append(String.format("%02X", code.length() / 2)).append(" ");
+                sb.append(String.format("%02X", code.length())).append(" ");
                 if (!operation.isEmpty()) {
                     if (Integer.parseInt(opTable[idx][2]) == 4) {
-                        if (opr * 4 + 1 > 255 ) {
-                            ERROR = " -- " + "Ошибка: некорректный код операции в ТКО ";
-                            return;
+                        if (!op1IsRelative) {
+                            if (opr * 4 + 1 > 255) {
+                                ERROR = " -- " + "Ошибка: некорректный код операции в ТКО ";
+                                return;
+                            }
+                            sb.append(String.format("%02X", opr * 4 + 1));
                         }
-                        sb.append(String.format("%02X", opr * 4 + 1));
+                        else {
+                            if (opr * 4 + 2 > 255) {
+                                ERROR = " -- " + "Ошибка: некорректный код операции в ТКО ";
+                                return;
+                            }
+                            sb.append(String.format("%02X", opr * 4 + 2));
+                        }
                     }
                     else{
                         if (opr * 4 > 255 ) {
@@ -147,6 +169,10 @@ public class SecondPass {
             if (!sb.isEmpty()) objCode.add(sb.toString());
         }
 
+        for (int j = 0; j < modTable.size(); j++){
+            objCode.add("M " + modTable.get(j));
+        }
+
         objCode.add(String.format("E %06X", startAddress));
     }
 
@@ -158,7 +184,7 @@ public class SecondPass {
         return -1;
     }
 
-    private String resolveOperand(String op, ArrayList<ArrayList<String>> symTable) {
+    private String resolveOperand(String op, ArrayList<ArrayList<String>> symTable, int size) {
         if (op == null || op.isEmpty()) return "";
 
         op = op.trim();
@@ -169,11 +195,23 @@ public class SecondPass {
         } else if (isNumber(op)) {
             return String.format("%04X", parseNumber(op));
         } else if (isLabel(op)) {
-            String addr = findLabelAddress(op, symTable);
-            if (addr == null) {
-                ERROR = "Ошибка: Метка '" + op + "' не найдена";
+            if (op.startsWith("[") && op.endsWith("]")) {
+                op = op.substring(1, op.length() - 1);
+                String addr = findLabelAddress(op, symTable);
+                if (addr == null) {
+                    ERROR = "Ошибка: Метка '" + op + "' не найдена";
+                } else {
+                    int relativeAddress = Integer.parseInt(addr, 16) - size;
+                    System.out.println(relativeAddress);
+                    return String.format("%06X",relativeAddress);
+                }
+            } else {
+                String addr = findLabelAddress(op, symTable);
+                if (addr == null) {
+                    ERROR = "Ошибка: Метка '" + op + "' не найдена";
+                }
+                return addr;
             }
-            return addr;
         }
 
         return op;
@@ -260,33 +298,33 @@ public class SecondPass {
         return hex.toString();
     }
 
-    private int getMaxOpcodeLength(String operation) {
-        if (opTable != null) {
-            for (String[] op : opTable) {
-                if (op[1].equalsIgnoreCase(operation)) {
-                    return Integer.parseInt(op[2]);
-                }
-            }
-        }
-
-        return -1;
-    }
-
-
     private boolean isLabel(String label) {
         if (label == null || label.isEmpty()) return false;
-        if (label.length() > 31) return false;
 
-        char first = label.charAt(0);
+        boolean isRelativeAddressing = label.startsWith("[") && label.endsWith("]");
+
+        String actualLabel = label;
+        if (isRelativeAddressing) {
+            actualLabel = label.substring(1, label.length() - 1);
+            if (actualLabel.isEmpty()) return false;
+        }
+
+        if (isRelativeAddressing) {
+            if (label.length() > 33) return false;
+        } else {
+            if (actualLabel.length() > 31) return false;
+        }
+
+        char first = actualLabel.charAt(0);
         if (!(isLetter(first) || isSpecialSymbol(first))) return false;
 
-        for (char c : label.toCharArray()) {
+        for (char c : actualLabel.toCharArray()) {
             if (!isValidChar(c)) return false;
         }
 
-        if (isRegister(label)) return false;
-
-        if (isDirective(label)) return false;
+        if (isRegister(actualLabel)) return false;
+        if (isDirective(actualLabel)) return false;
+        if (findOperation(actualLabel) != -1) return false;
 
         return true;
     }
@@ -367,5 +405,9 @@ public class SecondPass {
 
     public String getERROR() {
         return ERROR;
+    }
+
+    public ArrayList<String> getModTable(){
+        return modTable;
     }
 }
