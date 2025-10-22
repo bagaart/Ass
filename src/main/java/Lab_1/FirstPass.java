@@ -116,10 +116,18 @@ public class FirstPass {
                     switch (operation.toUpperCase()) {
                         case "WORD":
                             increment = 3;
+                            if (parseNumber(operand_1) < 0 || parseNumber(operand_1) > parseNumber("ffffffh")) {
+                                ERROR = i + " -- Ошибка: некорректное числовое значение";
+                                return;
+                            }
                             break;
                         case "RESW":
                             if (!isNumber(operand_1)) {
                                 ERROR = i + " -- Ошибка: RESW требует числового операнда";
+                                return;
+                            }
+                            if (parseNumber(operand_1) < 0) {
+                                ERROR = i + " -- Ошибка: RESW требует неотрицательного числа";
                                 return;
                             }
                             increment = 3 * parseNumber(operand_1);
@@ -148,7 +156,13 @@ public class FirstPass {
                     } else {
                         operation = opTable[opIndex][1];
                     }
+                    int opSize = Integer.parseInt(opTable[opIndex][2]);
+                    if (opSize > 4 || opSize < 1 || opSize == 3){
+                        ERROR = "Ошибка: Некорректная длина операции " + operation;
+                        return;
+                    }
                     increment = Integer.parseInt(opTable[opIndex][2]);
+
                 }
 
                 subTable.add(new ArrayList<>(Arrays.asList(
@@ -163,6 +177,7 @@ public class FirstPass {
 
             } else {
                 ERROR = i + " -- " + ERROR;
+                return;
             }
         }
 
@@ -178,21 +193,39 @@ public class FirstPass {
         operand_1 = "";
         operand_2 = "";
 
-        String[] tokens = line.trim().split("\\s+");
+        String[] tokens = splitLine(line);
         if (tokens.length == 0 || (tokens.length == 1 && tokens[0].isEmpty())) {
+            return true;
+        }
+
+        if (tokens[0].equalsIgnoreCase("END")) {
+            operation = "END";
+            if(tokens.length != 1){
+                ERROR = "Ошибка: Некорректная операндная часть\n";
+                return false;
+            }
             return true;
         }
 
         int idx = 0;
 
-        if (idx < tokens.length && isLabel(tokens[idx])) {
-            int value = findLabel(tokens[idx]);
-            if (value != -1) {
-                ERROR = "Ошибка: Данная метка уже объявлена\n";
-                return false;
+        if (idx < tokens.length) {
+            if ( isLabel(tokens[idx])) {
+                int value = findLabel(tokens[idx]);
+                if (value != -1) {
+                    ERROR = "Ошибка: Данная метка уже объявлена\n";
+                    return false;
+                }
+                label = tokens[idx];
+                idx++;
+            } else {
+                if (findOperation(tokens[idx]) != -1) {
+                    ERROR = "";
+                } else {
+                    ERROR = "Ошибка: Некорректная метка\n";
+                    return false;
+                }
             }
-            label = tokens[idx];
-            idx++;
         }
 
         if (idx < tokens.length) {
@@ -237,45 +270,89 @@ public class FirstPass {
         return true;
     }
 
-    private int calcByteSize(String operand) {
-        if (operand == null || operand.length() < 3) return -1;
-        operand = operand.trim();
+    private String[] splitLine(String line) {
+        line = line.trim();
+        if (line.isEmpty()) return new String[0];
 
-        char prefix = Character.toUpperCase(operand.charAt(0));
-        int start = operand.indexOf('\'');
-        int end = operand.lastIndexOf('\'');
+        ArrayList<String> tokens = new ArrayList<>();
+        String[] parts = line.split("\\s+", 3); // разбиваем на максимум 3 части: label, operation, operand
 
-        if (start == -1 || end == -1) {
-            start = operand.indexOf('"');
-            end = operand.lastIndexOf('"');
+        for (String part : parts) {
+            if (!part.isEmpty()) {
+                tokens.add(part);
+            }
         }
 
-        if (start == -1 || end == -1 || end <= start) return -1;
+        // Если есть операнд и он начинается с C/X/B или с кавычки,
+        // и последняя часть содержит оставшиеся токены после второй части
+        if (tokens.size() == 3) {
+            String operand = tokens.get(2).trim();
 
-        String content = operand.substring(start + 1, end).trim();
-
-        if (prefix != 'C' && prefix != 'X' && prefix != 'B') {
-            prefix = 'C';
-        }
-
-        switch (prefix) {
-            case 'C':
-                return content.length();
-
-            case 'X':
-                if (content.length() % 2 != 0) {
-                    content = "0" + content;
+            // Если операнд содержит кавычки внутри, собираем всё до последней кавычки
+            char quoteChar = 0;
+            int firstQuote = -1, lastQuote = -1;
+            for (int i = 0; i < operand.length(); i++) {
+                char c = operand.charAt(i);
+                if (c == '"' || c == '\'') {
+                    if (firstQuote == -1) firstQuote = i;
+                    lastQuote = i;
                 }
-                if (!content.matches("[0-9A-Fa-f]+")) return -1;
-                return content.length() / 2;
+            }
 
-            case 'B':
-                if (!content.matches("[01]+")) return -1;
-                return (content.length() + 7) / 8;
-
-            default:
-                return -1;
+            if (firstQuote != -1 && lastQuote != -1 && lastQuote < operand.length() - 1) {
+                // Обрезаем всё после последней кавычки
+                operand = operand.substring(0, operand.lastIndexOf(quoteChar) + 1);
+                tokens.set(2, operand);
+            }
         }
+
+        return tokens.toArray(new String[0]);
+    }
+
+    private int calcByteSize(String operand) {
+        if (operand == null) return -1;
+        String s = operand.trim();
+        if (s.isEmpty()) return -1;
+
+        int start = s.indexOf('\'');
+        int end = s.lastIndexOf('\'');
+        if (start == -1 || end == -1 || end <= start) {
+            start = s.indexOf('"');
+            end = s.lastIndexOf('"');
+        }
+
+        char first = Character.toUpperCase(s.charAt(0));
+
+        if ((first == 'X') && start != -1 && end > start) {
+            String content = s.substring(start + 1, end).trim();
+            if (content.length() % 2 != 0) content = "0" + content;
+            if (!content.matches("[0-9A-Fa-f]+")) return -1;
+            return content.length() / 2;
+        }
+
+        if ((first == 'C') && start != -1 && end > start) {
+            String content = s.substring(start + 1, end);
+            return content.length();
+        }
+
+        if ((first == 'B') && start != -1 && end > start) {
+            String content = s.substring(start + 1, end).trim();
+            if (!content.matches("[01]+")) return -1;
+            return (content.length() + 7) / 8;
+        }
+
+        if ((s.startsWith("\"") && s.endsWith("\"")) || (s.startsWith("'") && s.endsWith("'"))) {
+            String content = s.substring(1, s.length() - 1);
+            return content.length();
+        }
+
+        if (isNumber(s)) {
+            int val = parseNumber(s);
+            if (val < 0 || val > 0xFF) return -1;
+            return 1;
+        }
+
+        return -1;
     }
 
     private boolean isLabel(String label) {
@@ -288,6 +365,8 @@ public class FirstPass {
         for (char c : label.toCharArray()) {
             if (!isValidChar(c)) return false;
         }
+
+        if (isRegister(label)) return false;
 
         if (isDirective(label)) return false;
 
@@ -319,20 +398,27 @@ public class FirstPass {
         return -1;
     }
 
-    private boolean isStringOperand(String s){
+    private boolean isStringOperand(String s) {
         if (s == null) return false;
         s = s.trim();
-        if (s.length() < 2) return false;
+        if (s.length() < 3) return false;
 
-        char first = s.charAt(0);
-        char last = s.charAt(s.length() - 1);
+        char first = Character.toUpperCase(s.charAt(0));
 
-        if ((first == '"' && last == '"') || (first == '\'' && last == '\'')) {
-            return true;
+        int start = s.indexOf('"');
+        int end = s.lastIndexOf('"');
+        if (start == -1 || end == -1) {
+            start = s.indexOf('\'');
+            end = s.lastIndexOf('\'');
         }
 
-        return false;
+        if (start == -1 || end == -1 || end <= start) return false;
+
+        if (first == 'C' || first == 'X' || first == 'B') return true;
+
+        return (s.startsWith("\"") && s.endsWith("\"")) || (s.startsWith("'") && s.endsWith("'"));
     }
+
 
     private boolean isLetter(char c) {
         return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
@@ -363,20 +449,25 @@ public class FirstPass {
     }
 
     private boolean isNumber(String s) {
+        if (s == null || s.isEmpty()) return false;
+        s = s.trim();
         return isBinary(s) || isDecimal(s) || isHex(s);
     }
 
     private boolean isBinary(String s) {
         if (s == null || s.isEmpty()) return false;
         String str = s.trim().toLowerCase();
+
         if (str.startsWith("0b")) {
             String digits = str.substring(2);
             return !digits.isEmpty() && digits.matches("[01]+");
         }
+
         if (str.endsWith("b")) {
             String digits = str.substring(0, str.length() - 1);
             return !digits.isEmpty() && digits.matches("[01]+");
         }
+
         return str.matches("[01]+");
     }
 
@@ -434,7 +525,6 @@ public class FirstPass {
             return 0;
         }
     }
-
 
     public String getProgramLength() {
         return programLength;

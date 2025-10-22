@@ -59,7 +59,7 @@ public class ProcessingPanel extends JPanel {
         symbolTable.setFont(new Font("Consolas", Font.PLAIN, 11));
 
         JScrollPane scrollPane = new JScrollPane(symbolTable);
-        scrollPane.setPreferredSize(new Dimension(320, 150));
+        scrollPane.setPreferredSize(new Dimension(320, 170));
         panel.add(scrollPane, BorderLayout.CENTER);
 
         return panel;
@@ -75,7 +75,7 @@ public class ProcessingPanel extends JPanel {
         firstPassMessages.setBackground(new Color(240, 240, 240));
 
         JScrollPane scrollPane = new JScrollPane(firstPassMessages);
-        scrollPane.setPreferredSize(new Dimension(320, 120));
+        scrollPane.setPreferredSize(new Dimension(320, 100));
         panel.add(scrollPane, BorderLayout.CENTER);
 
         return panel;

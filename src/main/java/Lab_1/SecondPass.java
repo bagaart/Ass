@@ -5,15 +5,18 @@ import java.util.ArrayList;
 public class SecondPass {
     String ERROR = "";
     ArrayList<String> objCode = new ArrayList<>();
+    String[][] opTable = null;
 
     public void execute(ArrayList<ArrayList<String>> subTable,
                         ArrayList<ArrayList<String>> symTable,
                         String programName,
                         String programLength,
-                        int startAddress) {
+                        int startAddress,
+                        String[][] opTable) {
 
         ERROR = "";
         objCode.clear();
+        this.opTable = opTable;
 
         if (subTable == null || subTable.isEmpty()) {
             ERROR = "Ошибка: Не выполнен первый проход";
@@ -25,21 +28,18 @@ public class SecondPass {
                 startAddress,
                 programLength != null ? programLength : "000000"));
 
+        int i = 0;
         for (ArrayList<String> row : subTable) {
+            i++;
+
             String address = row.get(0);
             String operation = row.get(1);
             String op1 = row.get(2);
             String op2 = row.get(3);
-
+            int opr = 0;
             if (operation.equalsIgnoreCase("START") || operation.equalsIgnoreCase("END")) {
                 continue;
             }
-
-            op1 = resolveOperand(op1, symTable);
-            if (ERROR.length() > 0) return;
-
-            op2 = resolveOperand(op2, symTable);
-            if (ERROR.length() > 0) return;
 
             String code = "";
 
@@ -48,36 +48,115 @@ public class SecondPass {
                     case "WORD":
                         code = String.format("%06X", parseNumber(op1));
                         break;
-                    case "BYTE":
-                        code = getByteObjectCode(op1);
-                        if (code == null) {
-                            ERROR = "Ошибка: некорректный BYTE операнд " + op1;
-                            return;
-                        }
-                        break;
                     case "RESW":
                     case "RESB":
                         code = "";
                         break;
+                    case "BYTE":
+                        code = getByteObjectCode(op1);
+                        if (code == null) {
+                            ERROR = i + " -- " + "Ошибка: некорректный BYTE операнд " + op1;
+                            return;
+                        }
+                        break;
                 }
             } else {
-                code = operation + (op1.isEmpty() ? "" : op1) + (op2.isEmpty() ? "" : op2);
+                opr = Integer.parseInt(operation, 16);
+                int size = Integer.parseInt(opTable[findOperation(operation)][2]);
+                if (size == 4){
+                    if (!isLabel(op1)){
+                        ERROR = i + " -- " + "Ошибка: некорректный операнд";
+                        return;
+                    }
+                    if (!op2.isEmpty()){
+                        ERROR = i + " -- " + "Ошибка: лишний операнд";
+                        return;
+                    }
+                    opr = opr * 4 + 1;
+                }
+
+                if (size == 2){
+                    if (isNumber(op1) && op2.isEmpty()){
+                        ERROR = "";
+                    } else {
+                        if (isRegister(op1) && isRegister(op2)) {
+                            ERROR = "";
+                        } else {
+                            ERROR = i + " -- " + "Ошибка: некорректный формат операндной части";
+                            return;
+                        }
+                    }
+                }
+
+                if (size == 1){
+                    if (!op1.isEmpty() || !op2.isEmpty()) {
+                        ERROR = i + " -- " + "Ошибка: некорректный формат операндной части";
+                        return;
+                    }
+                }
+
+                op1 = resolveOperand(op1, symTable);
+                if (ERROR.length() > 0) {
+                    ERROR = i + " -- " + ERROR;
+                    return;
+                }
+
+                op2 = resolveOperand(op2, symTable);
+                if (ERROR.length() > 0) {
+                    ERROR = i + " -- " + ERROR;
+                    return;
+                }
+
+                code = String.format("%02X", opr) + (op1.isEmpty() ? "" : op1) + (op2.isEmpty() ? "" : op2);
             }
 
             StringBuilder sb = new StringBuilder();
-            sb.append("T ").append(address).append(" ");
-            sb.append(String.format("%02X", code.length() / 2)).append(" ");
             if (isDirective(operation)) {
+                sb.append("T ").append(address).append(" ");
+                if (!code.isEmpty()) sb.append(String.format("%02X", code.length() / 2)).append(" ");
                 sb.append(code);
             } else {
-                if (!op1.isEmpty()) sb.append(op1);
+                int idx = findOperation(operation);
+                int size = Integer.parseInt(opTable[idx][2]) * 2 + 2;
+                if (code.length() > size) {
+                    ERROR = i + " -- " + "Ошибка: превышена длина команды ";
+                    return;
+                }
+
+                sb.append("T ").append(address).append(" ");
+                sb.append(String.format("%02X", code.length() / 2)).append(" ");
+                if (!operation.isEmpty()) {
+                    if (opr == 4) {
+                        if (opr * 4 + 1 > 255 ) {
+                            ERROR = " -- " + "Ошибка: некорректный код операции в ТКО ";
+                            return;
+                        }
+                        sb.append(String.format("%02X", opr * 4 + 1));
+                    }
+                    else{
+                        if (opr * 4 > 255 ) {
+                            ERROR = " -- " + "Ошибка: некорректный код операции в ТКО ";
+                            return;
+                        }
+                        sb.append(String.format("%02X", opr * 4));
+                    }
+                }
+                if (!op1.isEmpty()) sb.append(" ").append(op1);
                 if (!op2.isEmpty()) sb.append(" ").append(op2);
             }
 
-            objCode.add(sb.toString());
+            if (!sb.isEmpty()) objCode.add(sb.toString());
         }
 
         objCode.add(String.format("E %06X", startAddress));
+    }
+
+    private int findOperation(String s){
+        if (s == null || s.isEmpty()) return -1;
+        for (int i = 0; i < opTable.length; i++){
+            if (s.equalsIgnoreCase(opTable[i][1])) return i;
+        }
+        return -1;
     }
 
     private String resolveOperand(String op, ArrayList<ArrayList<String>> symTable) {
@@ -89,7 +168,7 @@ public class SecondPass {
         } else if (isRegister(op)) {
             return getRegisterCode(op);
         } else if (isNumber(op)) {
-            return String.format("%X", parseNumber(op));
+            return String.format("%04X", parseNumber(op));
         } else if (isLabel(op)) {
             String addr = findLabelAddress(op, symTable);
             if (addr == null) {
@@ -132,38 +211,68 @@ public class SecondPass {
     }
 
     private String getByteObjectCode(String operand) {
-        operand = operand.trim();
-        char prefix = Character.toUpperCase(operand.charAt(0));
-        int start = operand.indexOf('\'');
-        int end = operand.lastIndexOf('\'');
+        if (operand == null) return null;
+        String s = operand.trim();
+        if (s.isEmpty()) return null;
 
-        if (start == -1 || end == -1) {
-            start = operand.indexOf('"');
-            end = operand.lastIndexOf('"');
-        }
-        if (start == -1 || end == -1 || end <= start) return null;
-
-        String content = operand.substring(start + 1, end);
-
-        if (prefix != 'C' && prefix != 'X') {
-            prefix = content.matches("[0-9A-Fa-f]+") ? 'X' : 'C';
-        }
-
-        switch (prefix) {
-            case 'C':
-                StringBuilder sb = new StringBuilder();
-                for (char c : content.toCharArray()) {
-                    sb.append(String.format("%02X", (int) c));
-                }
-                return sb.toString();
-            case 'X':
-                if (content.length() % 2 != 0) content = "0" + content;
-                if (!content.matches("[0-9A-Fa-f]+")) return null;
-                return content.toUpperCase();
-            default:
+        if (isNumber(s)) {
+            int val = parseNumber(s);
+            if (val < 0 || val > 255) {
+                ERROR = "Ошибка: BYTE число вне диапазона 0–255: " + s;
                 return null;
+            }
+            return String.format("%02X", val & 0xFF);
         }
+
+        char typePrefix = 0;
+        if (s.length() > 1 && (s.charAt(0) == 'X' || s.charAt(0) == 'x'
+                || s.charAt(0) == 'C' || s.charAt(0) == 'c')) {
+            typePrefix = s.charAt(0);
+            s = s.substring(1).trim(); // убрать X или C
+        }
+
+        if (!(s.startsWith("\"") || s.startsWith("'"))) {
+            ERROR = "Ошибка: BYTE строка должна начинаться с кавычки: " + operand;
+            return null;
+        }
+
+        char quote = s.charAt(0);
+        if (s.charAt(s.length() - 1) != quote) {
+            ERROR = "Ошибка: BYTE — кавычки не сбалансированы: " + operand;
+            return null;
+        }
+
+        String content = s.substring(1, s.length() - 1);
+
+        if (typePrefix == 'X' || typePrefix == 'x') {
+            content = content.replaceAll("\\s+", "");
+            if (!content.matches("[0-9A-Fa-f]+")) {
+                ERROR = "Ошибка: недопустимые символы в X\"...\": " + content;
+                return null;
+            }
+            return content.toUpperCase();
+        }
+
+        StringBuilder hex = new StringBuilder();
+        for (char c : content.toCharArray()) {
+            hex.append(String.format("%02X", (int) c));
+        }
+
+        return hex.toString();
     }
+
+    private int getMaxOpcodeLength(String operation) {
+        if (opTable != null) {
+            for (String[] op : opTable) {
+                if (op[1].equalsIgnoreCase(operation)) {
+                    return Integer.parseInt(op[2]);
+                }
+            }
+        }
+
+        return -1;
+    }
+
 
     private boolean isLabel(String label) {
         if (label == null || label.isEmpty()) return false;
@@ -175,6 +284,8 @@ public class SecondPass {
         for (char c : label.toCharArray()) {
             if (!isValidChar(c)) return false;
         }
+
+        if (isRegister(label)) return false;
 
         if (isDirective(label)) return false;
 
@@ -198,20 +309,26 @@ public class SecondPass {
     }
 
     private boolean isNumber(String s) {
-        return isBinary(s) || isDecimal(s) || isHex(s);
+        if (s == null || s.isEmpty()) return false;
+        s = s.trim();
+
+        return isDecimal(s) || isHex(s) || isBinary(s);
     }
 
     private boolean isBinary(String s) {
         if (s == null || s.isEmpty()) return false;
         String str = s.trim().toLowerCase();
-        if (str.startsWith("0b")) {
+
+        if (str.charAt(0) == '0' && str.charAt(1) == 'b') {
             String digits = str.substring(2);
             return !digits.isEmpty() && digits.matches("[01]+");
         }
+
         if (str.endsWith("b")) {
             String digits = str.substring(0, str.length() - 1);
             return !digits.isEmpty() && digits.matches("[01]+");
         }
+
         return str.matches("[01]+");
     }
 
@@ -232,7 +349,7 @@ public class SecondPass {
                     digits.matches("[0-9a-fA-F]+") &&
                     Character.isDigit(digits.charAt(0));
         }
-        return str.matches("[0-9a-fA-F]+");
+        return false;
     }
 
     private boolean isRegister(String s) {

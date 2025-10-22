@@ -9,6 +9,10 @@ public class Core extends JFrame {
     private ProcessingPanel processingPanel;
     private ResultsPanel resultsPanel;
     private ControlPanel controlPanel;
+    FirstPass firstPass = new FirstPass();
+    SecondPass secondPass = new SecondPass();
+    boolean firstPas = false;
+
 
     public Core() {
         initializeComponents();
@@ -47,53 +51,53 @@ public class Core extends JFrame {
     }
 
     public void executeFirstPass() {
+        firstPas = false;
+        resultsPanel.clear();
         String sourceText = String.join("\n", codeInputPanel.getSourceCode());
         String[][] opTable = codeInputPanel.getOperationCodes();
+        if (opTable != null) {
+            firstPass.execute(sourceText, opTable);
 
-        FirstPass firstPass = new FirstPass();
-        firstPass.execute(sourceText, opTable);
+            if (!firstPass.getERROR().isEmpty()) {
+                processingPanel.showFirstPassMessage(firstPass.getERROR(), true);
+                resultsPanel.clearSecondPassMessages();
+                controlPanel.enableSecondPassButton(false);
+                return;
+            }
 
-        if (!firstPass.getERROR().isEmpty()) {
-            processingPanel.showFirstPassMessage(firstPass.getERROR(), true);
+            ArrayList<ArrayList<String>> subTable = firstPass.getSubTable();
+            ArrayList<ArrayList<String>> symTable = firstPass.getSymTable();
+
+            processingPanel.updateSupportTable(listToArray(subTable, 4));
+            processingPanel.updateSymbolTable(listToArray(symTable, 2));
+
+            processingPanel.showFirstPassMessage("Первый проход успешно выполнен.", false);
             resultsPanel.clearSecondPassMessages();
-            controlPanel.enableSecondPassButton(false);
-            return;
+
+            controlPanel.enableSecondPassButton(true);
+            firstPas = true;
         }
-
-        ArrayList<ArrayList<String>> subTable = firstPass.getSubTable();
-        ArrayList<ArrayList<String>> symTable = firstPass.getSymTable();
-
-        processingPanel.updateSupportTable(listToArray(subTable, 4));
-        processingPanel.updateSymbolTable(listToArray(symTable, 2));
-
-        processingPanel.showFirstPassMessage("Первый проход успешно выполнен.", false);
-        resultsPanel.clearSecondPassMessages();
-
-        controlPanel.enableSecondPassButton(true);
     }
 
     public void executeSecondPass() {
         String[][] opTable = codeInputPanel.getOperationCodes();
         String sourceText = String.join("\n", codeInputPanel.getSourceCode());
 
-        FirstPass firstPass = new FirstPass();
-        firstPass.execute(sourceText, opTable);
-        if (!firstPass.getERROR().isEmpty()) {
-            resultsPanel.showSecondPassMessage("Ошибка первого прохода: " + firstPass.getERROR(), true);
+        if (!firstPass.getERROR().isEmpty() && firstPas) {
+            resultsPanel.showSecondPassMessage(firstPass.getERROR(), true);
             return;
         }
-
-        SecondPass secondPass = new SecondPass();
         secondPass.execute(firstPass.getSubTable(), firstPass.getSymTable(),
-                firstPass.getProgramName(), firstPass.getProgramLength(), firstPass.getStartAddress());
+                firstPass.getProgramName(), firstPass.getProgramLength(), firstPass.getStartAddress(), opTable);
 
         if (!secondPass.getERROR().isEmpty()) {
-            resultsPanel.showSecondPassMessage("Ошибка второго прохода: " + secondPass.getERROR(), true);
+            resultsPanel.showSecondPassMessage(secondPass.getERROR(), true);
             return;
         }
 
         resultsPanel.displayBinaryCode(secondPass.getObjCode().toArray(new String[0]));
         resultsPanel.showSecondPassMessage("Второй проход успешно выполнен.", false);
+        controlPanel.enableSecondPassButton(false);
     }
 
     private String[][] listToArray(ArrayList<ArrayList<String>> list, int cols) {
