@@ -396,7 +396,7 @@ public class SecondPass {
     private String getRegisterCode(String reg) {
         reg = reg.toUpperCase().substring(1);
         int num = Integer.parseInt(reg);
-        return String.format("%02X", num);
+        return String.format("%1X", num);
     }
 
     public ArrayList<String> getObjCode() {

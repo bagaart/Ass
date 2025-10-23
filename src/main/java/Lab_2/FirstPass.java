@@ -2,6 +2,7 @@ package Lab_2;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Objects;
 import java.util.Set;
 
 public class FirstPass {
@@ -90,8 +91,14 @@ public class FirstPass {
                         }
                         StartAddress = LOCCTR;
                     } else {
-                        ERROR = i + " -- Ошибка: Адрес должен быть числом";
-                        return;
+                        if (Objects.equals(operand_1, "")) {
+                            LOCCTR = 0;
+                            StartAddress = 0;
+                        }
+                        else {
+                            ERROR = i + " -- Ошибка: Адрес должен быть числом";
+                            return;
+                        }
                     }
                     programName = label;
                     subTable.add(new ArrayList<>(Arrays.asList("", "START", operand_1, operand_2

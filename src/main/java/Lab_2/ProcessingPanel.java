@@ -30,7 +30,7 @@ public class ProcessingPanel extends JPanel {
     private void createComponents() {
         add(createSupportTableSection());
         add(Box.createVerticalStrut(10));
-        add(createTablesSection()); // Объединенная секция для таблиц символов и модификаций
+        add(createTablesSection());
         add(Box.createVerticalStrut(10));
         add(createFirstPassMessagesSection());
     }
