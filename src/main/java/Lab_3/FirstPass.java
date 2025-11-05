@@ -8,7 +8,7 @@ import java.util.Set;
 public class FirstPass {
 
     private static final Set<String> DIRECTIVES = Set.of(
-            "START", "END", "BYTE", "WORD", "RESB", "RESW"
+            "START", "END", "BYTE", "WORD", "RESB", "RESW", "CSECT", "EXTREF", "EXTDEF"
     );
 
     ArrayList<ArrayList<String>> symTable = new ArrayList<>();
@@ -24,14 +24,17 @@ public class FirstPass {
 
     private int StartAddress = 0;
     private String programName;
-    private String programLength;
+    private ArrayList<String> programLength = new ArrayList<>();
+    private String currentModule;
 
     private String addressingMode;
 
     public void execute(String sourceText, String[][] opTable, String addressingMode) {
         ERROR = "";
+        currentModule = "";
         subTable.clear();
         symTable.clear();
+        programLength.clear();
 
         this.opTable = opTable;
         this.addressingMode = addressingMode;
@@ -42,6 +45,8 @@ public class FirstPass {
 
         int StartFlag = 0;
         int EndFlag = 0;
+        int MAX_MEMORY_ADR = 16777215;
+        String type = "";
 
         if (sourceText == null || sourceText.isEmpty()) {
             ERROR = "Ошибка: исходный текст пуст";
@@ -51,8 +56,8 @@ public class FirstPass {
         String[] code = sourceText.split("\\n+");
 
         for (int i = 0; i < code.length; i++) {
+            type = "";
 
-            int MAX_MEMORY_ADR = 16777215;
             if (LOCCTR > MAX_MEMORY_ADR) {
                 ERROR = i + " -- Ошибка: Переполнение памяти";
                 return;
@@ -66,15 +71,6 @@ public class FirstPass {
             if (prepareLine(code[i])) {
                 if (!ERROR.isEmpty()) break;
                 String hexAddress = String.format("%06X", LOCCTR);
-
-                if (!label.isEmpty() && StartFlag == 1) {
-                    if (findLabel(label) == -1) {
-                        symTable.add(new ArrayList<>(Arrays.asList(label, hexAddress)));
-                    } else {
-                        ERROR = i + " -- Ошибка: Метка уже существует";
-                        return;
-                    }
-                }
 
                 if (operation.equalsIgnoreCase("START")) {
                     if (StartFlag == 1) {
@@ -101,8 +97,10 @@ public class FirstPass {
                         }
                     }
                     programName = label;
-                    subTable.add(new ArrayList<>(Arrays.asList("", "START", operand_1, operand_2
+                    currentModule = label;
+                    subTable.add(new ArrayList<>(Arrays.asList(label, "START", operand_1, operand_2
                     )));
+                    symTable.add(new ArrayList<>(Arrays.asList(label, label, "", "Модуль")));
                     continue;
                 }
 
@@ -120,13 +118,27 @@ public class FirstPass {
                     break;
                 }
 
+                if (operation.equalsIgnoreCase("CSECT")) {
+                    if (label.isEmpty()){
+                        ERROR = i + " -- Ошибка: Не задано имя модуля";
+                        return;
+                    }
+                    currentModule = label;
+                    programLength.add(String.format("%06X", LOCCTR));
+                    LOCCTR = 0;
+                    subTable.add(new ArrayList<>(Arrays.asList(label, "CSECT", operand_1, operand_2
+                    )));
+                    symTable.add(new ArrayList<>(Arrays.asList(label, label, "", "Модуль")));
+                    continue;
+                }
+
                 int increment = 0;
 
                 if (isDirective(operation)) {
                     switch (operation.toUpperCase()) {
                         case "WORD":
                             increment = 3;
-                            if (parseNumber(operand_1) < 0 || parseNumber(operand_1) > parseNumber("ffffffh")) {
+                            if (!isNumber(operand_1) || parseNumber(operand_1) < 0 || parseNumber(operand_1) > parseNumber("ffffffh")) {
                                 ERROR = i + " -- Ошибка: некорректное числовое значение";
                                 return;
                             }
@@ -157,6 +169,77 @@ public class FirstPass {
                             }
                             increment = size;
                             break;
+                        case "EXTDEF":
+                            if ((operand_1 == null || operand_1.isEmpty()) && (operand_2 == null || operand_2.isEmpty())) {
+                                ERROR = i + " -- Ошибка: EXTDEF требует список имён";
+                                return;
+                            }
+                            String allOperands = operand_1;
+                            if (operand_2 != null && !operand_2.isEmpty()) {
+                                allOperands += "," + operand_2;
+                            }
+
+                            String[] defSymbols = allOperands.split(",");
+                            for (String sym : defSymbols) {
+                                sym = sym.trim();
+                                if (sym.isEmpty()) continue;
+                                if (!isLabel(sym)) {
+                                    ERROR = i + " -- Ошибка: Некорректное имя во внешнем определении: " + sym;
+                                    return;
+                                }
+
+                                for (ArrayList<String> existing : symTable) {
+                                    String existingName = existing.get(1);
+                                    String existingType = existing.get(3);
+                                    String existingModule = existing.get(0);
+                                    if ("ВИ".equals(existingType) && existingName.equalsIgnoreCase(sym)) {
+                                        if (!existingModule.equals(currentModule)) {
+                                            ERROR = i + " -- Ошибка: внешнее имя " + sym +
+                                                    " уже определено в модуле " + existingModule;
+                                            return;
+                                        }
+                                    }
+                                }
+                                int existingIdx = findLabel(sym);
+                                if (existingIdx != -1) {
+                                    ArrayList<String> entry = symTable.get(existingIdx);
+                                    entry.set(3, "ВИ");
+                                    continue;
+                                }
+                                symTable.add(new ArrayList<>(Arrays.asList(currentModule, sym, "", "ВИ")));
+                                subTable.add(new ArrayList<>(Arrays.asList(
+                                        String.format("%06X", LOCCTR), "EXTDEF", sym, ""
+                                )));
+                            }
+                            continue;
+
+                        case "EXTREF":
+                            if ((operand_1 == null || operand_1.isEmpty()) && (operand_2 == null || operand_2.isEmpty())) {
+                                ERROR = i + " -- Ошибка: EXTREF требует список имён";
+                                return;
+                            }
+                            String allRefOperands = operand_1;
+                            if (operand_2 != null && !operand_2.isEmpty()) {
+                                allRefOperands += "," + operand_2;
+                            }
+                            String[] refSymbols = allRefOperands.split(",");
+                            for (String sym : refSymbols) {
+                                sym = sym.trim();
+                                if (sym.isEmpty()) continue;
+                                if (!isLabel(sym)) {
+                                    ERROR = i + " -- Ошибка: Некорректное имя во внешней ссылке: " + sym;
+                                    return;
+                                }
+                                if (findLabel(sym) != -1) {
+                                    ERROR = i + " -- Ошибка: Символ " + sym + " уже существует в текущем модуле";
+                                    return;
+                                }
+                                symTable.add(new ArrayList<>(Arrays.asList(currentModule, sym, "", "ВС")));
+                                subTable.add(new ArrayList<>(Arrays.asList(
+                                        String.format("%06X", LOCCTR), "EXTREF", sym, ""
+                                )));
+                            }
+                            continue;
                     }
                 } else {
                     int opIndex = findOperation(operation);
@@ -173,6 +256,22 @@ public class FirstPass {
                     }
                     increment = Integer.parseInt(opTable[opIndex][2]);
 
+                }
+
+                if (!label.isEmpty()) {
+                    int idxLabel = findLabel(label);
+                    if (idxLabel == -1) {
+                        symTable.add(new ArrayList<>(Arrays.asList(currentModule, label, hexAddress, type)));
+                    } else {
+                        ArrayList<String> entry = symTable.get(idxLabel);
+                        String symbolType = entry.get(3);
+                        if ("ВИ".equals(symbolType) && (entry.get(2) == null || entry.get(2).isEmpty() || entry.get(2) == "")) {
+                            entry.set(2, hexAddress);
+                        } else {
+                            ERROR = i + " -- Ошибка: Метка уже существует";
+                            return;
+                        }
+                    }
                 }
 
                 subTable.add(new ArrayList<>(Arrays.asList(
@@ -194,7 +293,37 @@ public class FirstPass {
         if (EndFlag == 0) {
             ERROR = "Ошибка: Отсутствует директива END";
         }
-        programLength = String.format("%06X", endAddress - StartAddress);
+
+        for (ArrayList<String> sym : symTable) {
+            String module = sym.get(0);
+            String name = sym.get(1);
+            String address = sym.get(2);
+            type = sym.get(3);
+
+            if ("ВИ".equals(type)) {
+                if (address == null || address.isEmpty()) {
+                    ERROR = "Ошибка: неопределённое внешнее имя " + name + " в модуле " + module;
+                    return;
+                }
+            }
+
+            if ("ВС".equals(type)) {
+                boolean definedSomewhere = false;
+                for (ArrayList<String> other : symTable) {
+                    if ("ВИ".equals(other.get(3)) && other.get(1).equalsIgnoreCase(name)) {
+                        definedSomewhere = true;
+                        sym.set(2, other.get(2));
+                        break;
+                    }
+                }
+                if (!definedSomewhere) {
+                    ERROR = "Ошибка: неопределённая внешняя ссылка " + name + " в модуле " + module;
+                    return;
+                }
+            }
+        }
+
+        programLength.add(String.format("%06X", endAddress - StartAddress));
     }
 
     private boolean prepareLine(String line) {
@@ -222,7 +351,7 @@ public class FirstPass {
         if (idx < tokens.length) {
             if (isLabel(tokens[idx])) {
                 int value = findLabel(tokens[idx]);
-                if (value != -1) {
+                if (value != -1 && symTable.get(value).get(3) != "ВИ") {
                     ERROR = "Ошибка: Данная метка уже объявлена\n";
                     return false;
                 }
@@ -230,6 +359,8 @@ public class FirstPass {
                 idx++;
             } else {
                 if (findOperation(tokens[idx]) != -1) {
+                    ERROR = "";
+                } else if (isDirective(tokens[idx])) {
                     ERROR = "";
                 } else {
                     ERROR = "Ошибка: Некорректная метка\n";
@@ -420,7 +551,7 @@ public class FirstPass {
         if (s == null) return -1;
         for (int i = 0; i < symTable.size(); i++) {
             ArrayList<String> entry = symTable.get(i);
-            if (entry != null && !entry.isEmpty() && s.equalsIgnoreCase(entry.getFirst())) {
+            if (entry != null && !entry.isEmpty() && s.equalsIgnoreCase(entry.get(1)) && currentModule.equals(entry.getFirst())) {
                 return i;
             }
         }
@@ -555,7 +686,7 @@ public class FirstPass {
         }
     }
 
-    public String getProgramLength() {
+    public ArrayList<String> getProgramLength() {
         return programLength;
     }
 

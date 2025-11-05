@@ -24,7 +24,8 @@ public class CodeInputPanel extends JPanel {
                 BorderFactory.createTitledBorder("Исходные данные"),
                 BorderFactory.createEmptyBorder(10, 10, 10, 10)
         ));
-        setPreferredSize(new Dimension(350, 800));
+        setPreferredSize(new Dimension(200, 900));
+        setMaximumSize(new Dimension(200, Integer.MAX_VALUE));
     }
 
     private void createComponents() {
@@ -37,12 +38,13 @@ public class CodeInputPanel extends JPanel {
         JPanel panel = new JPanel(new BorderLayout());
         panel.setBorder(BorderFactory.createTitledBorder("Текст программы"));
 
-        sourceCodeArea = new JTextArea(15, 25);
+        sourceCodeArea = new JTextArea(25, 15);
         sourceCodeArea.setFont(new Font("Consolas", Font.PLAIN, 12));
         sourceCodeArea.setLineWrap(true);
 
         JScrollPane scrollPane = new JScrollPane(sourceCodeArea);
-        scrollPane.setPreferredSize(new Dimension(320, 500));
+        scrollPane.setPreferredSize(new Dimension(180, 450));
+        scrollPane.setMaximumSize(new Dimension(180, Short.MAX_VALUE));
         panel.add(scrollPane, BorderLayout.CENTER);
 
         return panel;
@@ -88,7 +90,8 @@ public class CodeInputPanel extends JPanel {
         operationTable.setDefaultEditor(Object.class, new DefaultCellEditor(new JTextField()));
 
         JScrollPane scrollPane = new JScrollPane(operationTable);
-        scrollPane.setPreferredSize(new Dimension(320, 200));
+        scrollPane.setPreferredSize(new Dimension(180, 200));
+        scrollPane.setMaximumSize(new Dimension(180, Short.MAX_VALUE));
 
         panel.add(buttonPanel, BorderLayout.NORTH);
         panel.add(scrollPane, BorderLayout.CENTER);
@@ -255,22 +258,43 @@ public class CodeInputPanel extends JPanel {
 
     private void initializeDefaultData() {
         String defaultSource = """
-                PROG START 100h
-                 JMP L1
-                A1 RESB 10
-                A2 RESW 20
-                B1 WORD 4096
-                B2 BYTE X"2F4C008A"
-                B3 BYTE C"Hello,Assembler!"
-                B4 BYTE 128
-                L1 LOADR1 B1
-                LOADR2 B4
-                ADD R1 R2
-                SUB R1 R2
-                SAVER1 B1
-                NOP
-                END
-                """;
+        PROG    START   0h
+        EXTREF  B5
+        EXTDEF  A1
+
+        JMP     L1
+
+        A1      RESB    10
+        A2      RESW    20
+        B1      WORD    4096
+        B2      BYTE    X"2F4C008A"
+        B3      BYTE    C"Hello,Assembler!"
+        B4      BYTE    128
+
+L1      LOADR1  B1
+        LOADR2  B5
+        ADD     R1 R2
+        SUB     R1 R2
+        SAVER1  B1
+        NOP
+
+NEW     CSECT
+        EXTDEF  B5
+        EXTREF  A1
+
+B5      LOADR2  A1
+        ADD     R2 R2
+        NOP
+
+NEW1    CSECT
+        EXTREF  A1
+
+        LOADR2  A1
+        ADD     R2 R2
+        NOP
+
+        END""";
+
 
         sourceCodeArea.setText(defaultSource);
 

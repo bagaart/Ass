@@ -1,18 +1,20 @@
 package Lab_3;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 
 public class SecondPass {
     String ERROR = "";
     ArrayList<String> objCode = new ArrayList<>();
     String[][] opTable = null;
     String addressingMode;
-    ArrayList<String> modTable = new ArrayList<>();
+    ArrayList<ArrayList<String>> modTable = new ArrayList<>();
+    String moduleName;
 
     public void execute(ArrayList<ArrayList<String>> subTable,
                         ArrayList<ArrayList<String>> symTable,
                         String programName,
-                        String programLength,
+                        ArrayList<String> programLength,
                         int startAddress,
                         String[][] opTable,
                         String addressingMode) {
@@ -31,9 +33,27 @@ public class SecondPass {
         objCode.add(String.format("H %-1s %06X %s",
                 programName != null ? programName : "",
                 startAddress,
-                programLength != null ? programLength : "000000"));
+                programLength.getFirst() != null ? programLength.getFirst() : "000000"));
+
+        moduleName = programName != null ? programName : "";
+
+        for (int i = 0; i < symTable.size() / 2; i++){
+            String ext = symTable.get(i).get(1);
+            if (isExtDef(ext, symTable)) {
+                objCode.add(String.format("D %-1s %s", ext, findLabelAddress(ext, symTable)));
+            }
+        }
+        for (int i = 0; i < symTable.size() / 2; i++){
+            String ext = symTable.get(i).get(1);
+            if (isExtRef(ext, symTable)) {
+                objCode.add(String.format("R %-1s", ext));
+            }
+        }
+
 
         int i = 0;
+        int k = 1;
+        int extFlag = 0;
         for (ArrayList<String> row : subTable) {
             i++;
 
@@ -47,6 +67,42 @@ public class SecondPass {
             int opr = 0;
             if (operation.equalsIgnoreCase("START") || operation.equalsIgnoreCase("END")) {
                 continue;
+            }
+            if (operation.equalsIgnoreCase("CSECT")) {
+                for (int j = 0; j < modTable.size(); j++){
+                    if (modTable.get(j).get(0).equals(moduleName)) {
+                        String name = "";
+                        if (modTable.get(j).get(2) != "") name = modTable.get(j).get(2);
+                        objCode.add("M " + modTable.get(j).get(1) + " " + name);
+                    }
+                }
+                objCode.add(String.format("E %06X", 0));
+
+                objCode.add("");
+                objCode.add(String.format("H %-1s 000000 %s",
+                        address,
+                        programLength.get(k) != null ? programLength.get(k) : "000000"));
+                k += 1;
+                moduleName = address;
+
+                for (int m = 0; m < symTable.size() / 2; m++){
+                    String ext = symTable.get(m).get(1);
+                    if (isExtDef(ext, symTable)) {
+                        objCode.add(String.format("D %-1s %s", ext, findLabelAddress(ext, symTable)));
+                    }
+                }
+                for (int m = 0; m < symTable.size() / 2; m++){
+                    String ext = symTable.get(m).get(1);
+                    if (isExtRef(ext, symTable)) {
+                        objCode.add(String.format("R %-1s", ext));
+                    }
+                }
+
+                continue;
+            }
+
+            if (isExtRef(op1, symTable) && !isDirective(operation)) {
+                modTable.add(new ArrayList<>(Arrays.asList(moduleName, address, op1)));
             }
 
             String code = "";
@@ -67,12 +123,15 @@ public class SecondPass {
                             return;
                         }
                         break;
+                    case "EXTREF":
+                    case "EXTDEF":
+                        continue;
                 }
             } else {
                 opr = Integer.parseInt(operation, 16);
                 int size = Integer.parseInt(opTable[findOperation(operation)][2]);
                 if (size == 4){
-                    if (!isLabel(op1)){
+                    if (!isLabel(op1) && op1 != "000000"){
                         ERROR = i + " -- " + "Ошибка: некорректный операнд";
                         return;
                     }
@@ -82,8 +141,9 @@ public class SecondPass {
                     }
                     if (op1.startsWith("[") && op1.endsWith("]")){
                         op1IsRelative = true;
-                    } else {
-                        modTable.add(address);
+                    }
+                    else {
+                        modTable.add(new ArrayList<>(Arrays.asList(moduleName, address, "")));
                     }
                 }
 
@@ -106,11 +166,15 @@ public class SecondPass {
                         return;
                     }
                 }
-
-                op1 = resolveOperand(op1, symTable, Integer.parseInt(address, 16) + size);
-                if (ERROR.length() > 0) {
-                    ERROR = i + " -- " + ERROR;
-                    return;
+                if (isExtRef(op1, symTable)) {
+                    op1 = "000000";
+                }
+                else {
+                    op1 = resolveOperand(op1, symTable, Integer.parseInt(address, 16) + size);
+                    if (ERROR.length() > 0) {
+                        ERROR = i + " -- " + ERROR;
+                        return;
+                    }
                 }
 
                 op2 = resolveOperand(op2, symTable, Integer.parseInt(address, 16) + size);
@@ -124,9 +188,11 @@ public class SecondPass {
 
             StringBuilder sb = new StringBuilder();
             if (isDirective(operation)) {
-                sb.append("T ").append(address).append(" ");
-                if (!code.isEmpty()) sb.append(String.format("%02X", code.length())).append(" ");
-                sb.append(code);
+                if (extFlag == 0) {
+                    sb.append("T ").append(address).append(" ");
+                    if (!code.isEmpty()) sb.append(String.format("%02X", code.length())).append(" ");
+                    sb.append(code);
+                }
             } else {
                 int idx = findOperation(operation);
                 int size = Integer.parseInt(opTable[idx][2]) * 2 + 2;
@@ -170,7 +236,11 @@ public class SecondPass {
         }
 
         for (int j = 0; j < modTable.size(); j++){
-            objCode.add("M " + modTable.get(j));
+            if (modTable.get(j).get(0).equals(moduleName)) {
+                String name = "";
+                if (modTable.get(j).get(2) != "") name = modTable.get(j).get(2);
+                objCode.add("M " + modTable.get(j).get(1) + " " + name);
+            }
         }
 
         objCode.add(String.format("E %06X", startAddress));
@@ -202,7 +272,6 @@ public class SecondPass {
                     ERROR = "Ошибка: Метка '" + op + "' не найдена";
                 } else {
                     int relativeAddress = Integer.parseInt(addr, 16) - size;
-                    System.out.println(relativeAddress);
                     return String.format("%06X",relativeAddress);
                 }
             } else {
@@ -217,11 +286,29 @@ public class SecondPass {
         return op;
     }
 
+    private boolean isExtRef(String label, ArrayList<ArrayList<String>> symTable) {
+        for (ArrayList<String> row : symTable) {
+            if (row.get(1).equalsIgnoreCase(label) && row.get(0).equalsIgnoreCase(moduleName) && row.get(3).equalsIgnoreCase("ВС")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isExtDef(String label, ArrayList<ArrayList<String>> symTable) {
+        for (ArrayList<String> row : symTable) {
+            if (row.get(1).equalsIgnoreCase(label) && row.get(0).equalsIgnoreCase(moduleName) && row.get(3).equalsIgnoreCase("ВИ")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
 
     private String findLabelAddress(String label, ArrayList<ArrayList<String>> symTable) {
         for (ArrayList<String> row : symTable) {
-            if (row.get(0).equalsIgnoreCase(label)) {
-                return row.get(1);
+            if (row.get(1).equalsIgnoreCase(label) && row.get(0).equalsIgnoreCase(moduleName)) {
+                return row.get(2);
             }
         }
         return null;
@@ -229,7 +316,8 @@ public class SecondPass {
 
     private boolean isDirective(String s) {
         return s.equalsIgnoreCase("WORD") || s.equalsIgnoreCase("BYTE")
-                || s.equalsIgnoreCase("RESW") || s.equalsIgnoreCase("RESB");
+                || s.equalsIgnoreCase("RESW") || s.equalsIgnoreCase("RESB")
+                || s.equalsIgnoreCase("EXTREF") || s.equalsIgnoreCase("EXTDEF");
     }
 
     private int parseNumber(String s) {
@@ -407,7 +495,7 @@ public class SecondPass {
         return ERROR;
     }
 
-    public ArrayList<String> getModTable(){
+    public ArrayList<ArrayList<String>> getModTable(){
         return modTable;
     }
 }

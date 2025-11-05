@@ -32,11 +32,17 @@ public class Core extends JFrame {
     private void setupInterface() {
         setLayout(new BorderLayout(10, 10));
 
-        JPanel mainContent = new JPanel(new GridLayout(1, 3, 15, 0));
+        JPanel mainContent = new JPanel();
+        mainContent.setLayout(new BoxLayout(mainContent, BoxLayout.X_AXIS));
         mainContent.setBorder(BorderFactory.createEmptyBorder(15, 15, 10, 15));
 
+        codeInputPanel.setMaximumSize(new Dimension(400, Integer.MAX_VALUE));
+        codeInputPanel.setPreferredSize(new Dimension(400, 900));
+
         mainContent.add(codeInputPanel);
+        mainContent.add(Box.createRigidArea(new Dimension(15, 0)));
         mainContent.add(processingPanel);
+        mainContent.add(Box.createRigidArea(new Dimension(15, 0)));
         mainContent.add(resultsPanel);
 
         add(mainContent, BorderLayout.CENTER);
@@ -46,7 +52,7 @@ public class Core extends JFrame {
     private void configureWindow() {
         setTitle("Двухпросмотровый ассемблер для программ в перемещаемом формате");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setSize(1400, 900);
+        setSize(1700, 1000);
         setLocationRelativeTo(null);
         setResizable(false);
     }
@@ -70,7 +76,7 @@ public class Core extends JFrame {
             ArrayList<ArrayList<String>> symTable = firstPass.getSymTable();
 
             processingPanel.updateSupportTable(listToArray(subTable, 4));
-            processingPanel.updateSymbolTable(listToArray(symTable, 2));
+            processingPanel.updateSymbolTable(listToArray(symTable, 4));
 
             processingPanel.showFirstPassMessage("Первый проход успешно выполнен.", false);
             resultsPanel.clearSecondPassMessages();
@@ -97,7 +103,9 @@ public class Core extends JFrame {
             return;
         }
 
-        processingPanel.updateModificationTable(secondPass.getModTable().toArray(new String[0]));
+        ArrayList<ArrayList<String>> modTable = secondPass.getModTable();
+
+        processingPanel.updateModificationTable(listToArray(modTable, 3));
         resultsPanel.displayBinaryCode(secondPass.getObjCode().toArray(new String[0]));
         resultsPanel.showSecondPassMessage("Второй проход успешно выполнен.", false);
         disableSecondPass();
