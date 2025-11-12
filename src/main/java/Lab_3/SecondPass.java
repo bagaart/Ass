@@ -37,15 +37,15 @@ public class SecondPass {
 
         moduleName = programName != null ? programName : "";
 
-        for (int i = 0; i < symTable.size() / 2; i++){
-            String ext = symTable.get(i).get(1);
-            if (isExtDef(ext, symTable)) {
+        for (int m = 0; m < symTable.size(); m++){
+            String ext = symTable.get(m).get(1);
+            if (isExtDef(ext, symTable) && moduleName.equals(symTable.get(m).get(0))) {
                 objCode.add(String.format("D %-1s %s", ext, findLabelAddress(ext, symTable)));
             }
         }
-        for (int i = 0; i < symTable.size() / 2; i++){
-            String ext = symTable.get(i).get(1);
-            if (isExtRef(ext, symTable)) {
+        for (int m = 0; m < symTable.size(); m++){
+            String ext = symTable.get(m).get(1);
+            if (isExtRef(ext, symTable) && moduleName.equals(symTable.get(m).get(0))) {
                 objCode.add(String.format("R %-1s", ext));
             }
         }
@@ -85,15 +85,15 @@ public class SecondPass {
                 k += 1;
                 moduleName = address;
 
-                for (int m = 0; m < symTable.size() / 2; m++){
+                for (int m = 0; m < symTable.size(); m++){
                     String ext = symTable.get(m).get(1);
-                    if (isExtDef(ext, symTable)) {
+                    if (isExtDef(ext, symTable) && moduleName.equals(symTable.get(m).get(0))) {
                         objCode.add(String.format("D %-1s %s", ext, findLabelAddress(ext, symTable)));
                     }
                 }
-                for (int m = 0; m < symTable.size() / 2; m++){
+                for (int m = 0; m < symTable.size(); m++){
                     String ext = symTable.get(m).get(1);
-                    if (isExtRef(ext, symTable)) {
+                    if (isExtRef(ext, symTable) && moduleName.equals(symTable.get(m).get(0))) {
                         objCode.add(String.format("R %-1s", ext));
                     }
                 }
@@ -263,10 +263,19 @@ public class SecondPass {
         } else if (isRegister(op)) {
             return getRegisterCode(op);
         } else if (isNumber(op)) {
-            return String.format("%04X", parseNumber(op));
+            String ans = String.format("%02X", parseNumber(op));
+            if (ans.length() > 2) {
+                ERROR = "Ошибка: Некорректный операнд";
+                return "";
+            }
+            return ans;
         } else if (isLabel(op)) {
             if (op.startsWith("[") && op.endsWith("]")) {
                 op = op.substring(1, op.length() - 1);
+                if (isExtRef(op, symTable)) {
+                    ERROR = "Ошибка: Косвенная адресация со внешними ссылками недопустима";
+                    return "";
+                }
                 String addr = findLabelAddress(op, symTable);
                 if (addr == null) {
                     ERROR = "Ошибка: Метка '" + op + "' не найдена";
@@ -353,7 +362,7 @@ public class SecondPass {
         if (s.length() > 1 && (s.charAt(0) == 'X' || s.charAt(0) == 'x'
                 || s.charAt(0) == 'C' || s.charAt(0) == 'c')) {
             typePrefix = s.charAt(0);
-            s = s.substring(1).trim(); // убрать X или C
+            s = s.substring(1).trim();
         }
 
         if (!(s.startsWith("\"") || s.startsWith("'"))) {

@@ -50,7 +50,7 @@ public class Core extends JFrame {
     }
 
     private void configureWindow() {
-        setTitle("Двухпросмотровый ассемблер для программ в перемещаемом формате");
+        setTitle("Двухпросмотровый ассемблер для программ в полном перемещаемом формате");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setSize(1700, 1000);
         setLocationRelativeTo(null);
@@ -100,6 +100,7 @@ public class Core extends JFrame {
 
         if (!secondPass.getERROR().isEmpty()) {
             resultsPanel.showSecondPassMessage(secondPass.getERROR(), true);
+            disableSecondPass();
             return;
         }
 

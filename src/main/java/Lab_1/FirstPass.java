@@ -275,7 +275,7 @@ public class FirstPass {
         if (line.isEmpty()) return new String[0];
 
         ArrayList<String> tokens = new ArrayList<>();
-        String[] parts = line.split("\\s+", 3); // разбиваем на максимум 3 части: label, operation, operand
+        String[] parts = line.split("\\s+", 3);
 
         for (String part : parts) {
             if (!part.isEmpty()) {
@@ -283,12 +283,9 @@ public class FirstPass {
             }
         }
 
-        // Если есть операнд и он начинается с C/X/B или с кавычки,
-        // и последняя часть содержит оставшиеся токены после второй части
         if (tokens.size() == 3) {
             String operand = tokens.get(2).trim();
 
-            // Если операнд содержит кавычки внутри, собираем всё до последней кавычки
             char quoteChar = 0;
             int firstQuote = -1, lastQuote = -1;
             for (int i = 0; i < operand.length(); i++) {
@@ -300,7 +297,6 @@ public class FirstPass {
             }
 
             if (firstQuote != -1 && lastQuote != -1 && lastQuote < operand.length() - 1) {
-                // Обрезаем всё после последней кавычки
                 operand = operand.substring(0, operand.lastIndexOf(quoteChar) + 1);
                 tokens.set(2, operand);
             }

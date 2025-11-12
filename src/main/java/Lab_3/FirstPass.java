@@ -170,6 +170,10 @@ public class FirstPass {
                             increment = size;
                             break;
                         case "EXTDEF":
+                            if (!label.isEmpty()) {
+                                ERROR = i + " -- Ошибка: нельзя поcтавить метку на EXTDEF";
+                                return;
+                            }
                             if ((operand_1 == null || operand_1.isEmpty()) && (operand_2 == null || operand_2.isEmpty())) {
                                 ERROR = i + " -- Ошибка: EXTDEF требует список имён";
                                 return;
@@ -214,6 +218,10 @@ public class FirstPass {
                             continue;
 
                         case "EXTREF":
+                            if (!label.isEmpty()) {
+                                ERROR = i + " -- Ошибка: нельзя поcтавить метку на EXTREF";
+                                return;
+                            }
                             if ((operand_1 == null || operand_1.isEmpty()) && (operand_2 == null || operand_2.isEmpty())) {
                                 ERROR = i + " -- Ошибка: EXTREF требует список имён";
                                 return;
@@ -307,20 +315,7 @@ public class FirstPass {
                 }
             }
 
-            if ("ВС".equals(type)) {
-                boolean definedSomewhere = false;
-                for (ArrayList<String> other : symTable) {
-                    if ("ВИ".equals(other.get(3)) && other.get(1).equalsIgnoreCase(name)) {
-                        definedSomewhere = true;
-                        sym.set(2, other.get(2));
-                        break;
-                    }
-                }
-                if (!definedSomewhere) {
-                    ERROR = "Ошибка: неопределённая внешняя ссылка " + name + " в модуле " + module;
-                    return;
-                }
-            }
+
         }
 
         programLength.add(String.format("%06X", endAddress - StartAddress));
@@ -387,7 +382,8 @@ public class FirstPass {
             if (isOperand(tokens[idx])) {
                 operand_1 = tokens[idx];
                 idx++;
-            } else {
+            }
+             else {
                 ERROR = "Ошибка: Некорректный операнд\n";
                 return false;
             }
@@ -463,6 +459,12 @@ public class FirstPass {
         String s = operand.trim();
         if (s.isEmpty()) return -1;
 
+        if (isNumber(s)) {
+            int val = parseNumber(s);
+            if (val < 0 || val > 0xFF) return -1;
+            return 1;
+        }
+
         int start = s.indexOf('\'');
         int end = s.lastIndexOf('\'');
         if (start == -1 || end == -1 || end <= start) {
@@ -493,12 +495,6 @@ public class FirstPass {
         if ((s.startsWith("\"") && s.endsWith("\"")) || (s.startsWith("'") && s.endsWith("'"))) {
             String content = s.substring(1, s.length() - 1);
             return content.length();
-        }
-
-        if (isNumber(s)) {
-            int val = parseNumber(s);
-            if (val < 0 || val > 0xFF) return -1;
-            return 1;
         }
 
         return -1;
@@ -597,7 +593,9 @@ public class FirstPass {
     }
 
     private boolean isOperand(String s) {
-        if (isNumber(s)) return true;
+        if (isNumber(s)){
+            return true;
+        }
         if (isRegister(s)) return true;
         if (isLabel(s)) return true;
         if (isStringOperand(s)) return true;

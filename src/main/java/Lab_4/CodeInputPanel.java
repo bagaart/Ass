@@ -1,4 +1,4 @@
-package Lab_3;
+package Lab_4;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
@@ -24,21 +24,37 @@ public class CodeInputPanel extends JPanel {
                 BorderFactory.createTitledBorder("Исходные данные"),
                 BorderFactory.createEmptyBorder(10, 10, 10, 10)
         ));
-        setPreferredSize(new Dimension(200, 700));
-        setMaximumSize(new Dimension(200, Integer.MAX_VALUE));
+        setPreferredSize(new Dimension(300, 750));
+        setMaximumSize(new Dimension(300, Integer.MAX_VALUE));
     }
 
     private void createComponents() {
         add(createSourceCodeSection());
         add(Box.createVerticalStrut(5));
         add(createOperationTableSection());
+
+        sourceCodeArea.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
+            @Override
+            public void insertUpdate(javax.swing.event.DocumentEvent e) { notifyChange(); }
+            @Override
+            public void removeUpdate(javax.swing.event.DocumentEvent e) { notifyChange(); }
+            @Override
+            public void changedUpdate(javax.swing.event.DocumentEvent e) { notifyChange(); }
+            private void notifyChange() {
+                if (onDataChanged != null) onDataChanged.run();
+            }
+        });
+
+        tableModel.addTableModelListener(e -> {
+            if (onDataChanged != null) onDataChanged.run();
+        });
     }
 
     private JPanel createSourceCodeSection() {
         JPanel panel = new JPanel(new BorderLayout());
         panel.setBorder(BorderFactory.createTitledBorder("Текст программы"));
 
-        sourceCodeArea = new JTextArea(20, 15);
+        sourceCodeArea = new JTextArea(25, 15);
         sourceCodeArea.setFont(new Font("Consolas", Font.PLAIN, 12));
         sourceCodeArea.setLineWrap(true);
 
@@ -62,7 +78,6 @@ public class CodeInputPanel extends JPanel {
         JButton deleteButton = new JButton("Удалить операцию");
         deleteButton.addActionListener(this::deleteOperation);
 
-        // Кнопка для проверки данных
         JButton validateButton = new JButton("Проверить данные");
         validateButton.addActionListener(e -> validateAllData());
 
@@ -258,38 +273,22 @@ public class CodeInputPanel extends JPanel {
 
     private void initializeDefaultData() {
         String defaultSource = """
-PROG START   0h
-     EXTREF  B5
-     EXTDEF  A1
-     JMP     L1
-     A1      RESB    10
-     A2      RESW    20
-     B1      WORD    4096
-     B2      BYTE    X"2F4C008A"
-     B3      BYTE    C"Hello,Assembler!"
-     B4      BYTE    128
-L1   LOADR1  B1
-     LOADR2  B5
-     ADD     R1 R2
-     SUB     R1 R2
-     SAVER1  B1
-     NOP
-     
-NEW1 csect
-
-NEW  CSECT
-     EXTDEF  B5
-     EXTREF  A1
-B5   LOADR2  A1
-     ADD     R2 R2
-     NOP
-NEW1 CSECT
-     EXTREF  A1
-     LOADR2  A1
-B5   LOADR2  A1
-     ADD     R2 R2
-     NOP
-     END""";
+                PROG START 100h
+                     JMP L1
+                A1   RESB 10
+                A2   RESW 20
+                B1   WORD 4096
+                B2   BYTE X"2F4C008A"
+                B3   BYTE C"Hello,Assembler!"
+                B4   BYTE 128
+                L1   LOADR1 B1
+                     LOADR2 B4
+                     ADD R1 R2
+                     SUB R1 R2
+                     SAVER1 B1
+                     NOP
+                     END
+                """;
 
 
         sourceCodeArea.setText(defaultSource);
@@ -314,5 +313,18 @@ B5   LOADR2  A1
     private boolean isValidMnemonic(String s) {
         if (s == null || s.isEmpty()) return false;
         return s.matches("[a-zA-Z][a-zA-Z0-9]*");
+    }
+
+    @Override
+    public void setEnabled(boolean enabled) {
+        super.setEnabled(enabled);
+        sourceCodeArea.setEditable(enabled);
+        operationTable.setEnabled(enabled);
+    }
+
+    private Runnable onDataChanged;
+
+    public void setOnDataChanged(Runnable onDataChanged) {
+        this.onDataChanged = onDataChanged;
     }
 }
