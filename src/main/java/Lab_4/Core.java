@@ -2,10 +2,8 @@ package Lab_4;
 
 import javax.swing.*;
 import java.awt.*;
-import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.*;
 import java.util.List;
-import java.util.Set;
 
 public class Core extends JFrame {
     private CodeInputPanel codeInputPanel;
@@ -81,11 +79,6 @@ public class Core extends JFrame {
 
     public void stepOneLine() {
 
-        if (opTable == null) {
-            opTable = codeInputPanel.getOperationCodes();
-            if (opTable == null) return;
-        }
-
         if (sourceLines == null) {
             sourceLines = codeInputPanel.getSourceCode();
             linesCount = sourceLines.length;
@@ -98,7 +91,7 @@ public class Core extends JFrame {
             return;
         }
 
-        String line = sourceLines[currentLineIndex];
+        String line = sourceLines[currentLineIndex].toUpperCase();
         lineID = currentLineIndex;
         step(line);
 
@@ -137,7 +130,7 @@ public class Core extends JFrame {
 
         while (currentLineIndex < linesCount && !endFlag && ERROR.isEmpty()) {
             lineID = currentLineIndex;
-            step(sourceLines[currentLineIndex]);
+            step(sourceLines[currentLineIndex].toUpperCase());
             currentLineIndex++;
         }
 
@@ -201,6 +194,11 @@ public class Core extends JFrame {
 
 
     private void step(String line){
+        opTable = codeInputPanel.getOperationCodes();
+        if (opTable == null){
+            ERROR = "Пустая таблица ТКО";
+            return;
+        }
         ERROR = "";
 
         if (lineID == 0) {
@@ -219,7 +217,10 @@ public class Core extends JFrame {
                     ERROR = lineID + " -- Ошибка: Повторное использование START";
                     return;
                 }
-                startFlag = true;
+                if (label.isEmpty()) {
+                    ERROR = lineID + " -- Ошибка: Не задано имя программы";
+                    return;
+                }
 
                 if (isNumber(operand_1)) {
                     currentAddress = parseNumber(operand_1);
@@ -237,33 +238,26 @@ public class Core extends JFrame {
                     ERROR = lineID + " -- Ошибка: Некорректная операндная часть";
                     return;
                 }
-
+                startFlag = true;
                 rowToResultTable("H", label, operand_1, "", "", "");
-            }
-
-            if (!label.isEmpty() && startFlag && !operation.equalsIgnoreCase("START")) {
-                if (findLabel(label) == -1) {
-                    symTable.add(new String[]{label, hexAddress(currentAddress), ""});
-                    for (int i = symTable.size() - 1; i >= 0; i--){
-                        String[] check = symTable.get(i);
-                        if (check[0].equals(label) && check[1].isEmpty()){
-                            for (int j = 0; j < resultTable.size(); j++) {
-                                String[] l = resultTable.get(j);
-                                if (l[4].equals(label)){
-                                    l[4] = hexAddress(currentAddress);
-                                    symTable.remove(i);
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    ERROR = lineID + " -- Ошибка: Метка уже существует";
-                    return;
-                }
             }
             if (operation.equalsIgnoreCase("END")) {
                 if (!startFlag) {
                     ERROR = lineID + " -- Ошибка: END без START";
+                    return;
+                }
+                if (!label.isEmpty()) {
+                    ERROR = lineID + " -- Ошибка: метка у директивы END";
+                    return;
+                }
+
+                if (!operand_1.isEmpty()) {
+                    ERROR = lineID + " -- Ошибка: некорректная операндная часть";
+                    return;
+                }
+
+                if (!operand_2.isEmpty()) {
+                    ERROR = lineID + " -- Ошибка: некорректная операндная часть";
                     return;
                 }
                 endFlag = true;
@@ -271,6 +265,7 @@ public class Core extends JFrame {
 
                 resultTable.get(0)[3] = hexAddress(endAddress - startAddress);
                 rowToResultTable("E", hexAddress(startAddress), "", "", "", "");
+
                 for (String[] check : symTable) {
                     if (check[1].isEmpty()) {
                         ERROR = "Ошибка: Неопределенная метка " + check[0];
@@ -278,6 +273,28 @@ public class Core extends JFrame {
                     }
                 }
                 return;
+            }
+
+            if (!label.isEmpty() && startFlag && !operation.equalsIgnoreCase("START")) {
+                if (findLabel(label) == -1) {
+                    symTable.add(new String[]{label, hexAddress(currentAddress), ""});
+
+                    Iterator<String[]> iterator = symTable.iterator();
+                    while (iterator.hasNext()) {
+                        String[] check = iterator.next();
+                        if (check[0].equals(label) && check[1].isEmpty()) {
+                            for (String[] l : resultTable) {
+                                if (l[4].equals(label)) {
+                                    l[4] = hexAddress(currentAddress);
+                                }
+                            }
+                            iterator.remove();
+                        }
+                    }
+                } else {
+                    ERROR = lineID + " -- Ошибка: Метка уже существует";
+                    return;
+                }
             }
 
             int increment = 0;
@@ -293,7 +310,7 @@ public class Core extends JFrame {
                             ERROR = lineID + " -- Ошибка: Некорректная операндная часть";
                             return;
                         }
-                        rowToResultTable("T", hexAddress(currentAddress), "06", hexAddress(parseNumber(operand_1)), "", "");
+                        rowToResultTable("T", hexAddress(currentAddress), "06", "", hexAddress(parseNumber(operand_1)), "");
                         break;
                     case "RESW":
                         if (!isNumber(operand_1)) {
@@ -308,8 +325,8 @@ public class Core extends JFrame {
                             ERROR = lineID + " -- Ошибка: Некорректная операндная часть";
                             return;
                         }
-                        rowToResultTable("T", hexAddress(currentAddress), "", "", "", "");
                         increment = 3 * parseNumber(operand_1);
+                        rowToResultTable("T", hexAddress(currentAddress), String.format("%02X", increment * 2), "", "", "");
                         break;
                     case "RESB":
                         if (!isNumber(operand_1)) {
@@ -320,8 +337,8 @@ public class Core extends JFrame {
                             ERROR = lineID + " -- Ошибка: Некорректная операндная часть";
                             return;
                         }
-                        rowToResultTable("T", hexAddress(currentAddress), "", "", "", "");
                         increment = parseNumber(operand_1);
+                        rowToResultTable("T", hexAddress(currentAddress), String.format("%02X", increment * 2), "", "", "");
                         break;
                     case "BYTE":
                         int size = calcByteSize(operand_1);
@@ -338,7 +355,7 @@ public class Core extends JFrame {
                             ERROR = lineID + " -- Ошибка: Некорректная операндная часть";
                             return;
                         }
-                        rowToResultTable("T", hexAddress(currentAddress), String.format("%02X", size), code, "", "");
+                        rowToResultTable("T", hexAddress(currentAddress), String.format("%02X", size * 2), "", code, "");
                         increment = size;
                         break;
                 }
@@ -569,8 +586,8 @@ public class Core extends JFrame {
 
         if ((first == 'X') && start != -1 && end > start) {
             String content = s.substring(start + 1, end).trim();
-            if (content.length() % 2 != 0) content = "0" + content;
             if (!content.matches("[0-9A-Fa-f]+")) return -1;
+            if (content.length() % 2 > 0) return -1;
             return content.length();
         }
 
@@ -677,6 +694,7 @@ public class Core extends JFrame {
             } else if (isDirective(tokens.get(idx))) {
                 operation = tokens.get(idx);
                 idx++;
+            } else if (isOperand(tokens.get(idx))) {
             } else {
                 ERROR = "Ошибка: Неизвестная операция / отсутствует операция\n";
                 return false;
@@ -777,9 +795,7 @@ public class Core extends JFrame {
         }
         if (str.toLowerCase().endsWith("h")) {
             String digits = str.substring(0, str.length() - 1);
-            return !digits.isEmpty() &&
-                    digits.matches("[0-9a-fA-F]+") &&
-                    Character.isDigit(digits.charAt(0));
+            return !digits.isEmpty() && digits.matches("[0-9a-fA-F]+");
         }
         return false;
     }

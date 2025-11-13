@@ -140,7 +140,7 @@ public class CodeInputPanel extends JPanel {
 
         try {
             int value = Integer.parseInt(s, 16);
-            return value > 0;
+            return value > 0 ;
         } catch (NumberFormatException e) {
             return false;
         }
@@ -194,27 +194,41 @@ public class CodeInputPanel extends JPanel {
                 errorMessage.append("Строка ").append(i + 1).append(": Код операции не может быть пустым\n");
                 isValid = false;
             } else if (!isHex(code)) {
-                try {
-                    int value = Integer.parseInt(code, 16);
-                    if (value == 0) {
-                        errorMessage.append("Строка ").append(i + 1).append(": Код операции '").append(code)
-                                .append("' должен быть больше нуля\n");
-                    } else {
-                        errorMessage.append("Строка ").append(i + 1).append(": Код операции '").append(code)
-                                .append("' должен быть шестнадцатеричным числом\n");
-                    }
-                } catch (NumberFormatException e) {
-                    errorMessage.append("Строка ").append(i + 1).append(": Код операции '").append(code)
-                            .append("' должен быть шестнадцатеричным числом\n");
-                }
-                isValid = false;
-            } else if (codes.contains(code.toUpperCase())) {
-                errorMessage.append("Строка ").append(i + 1).append(": Код операции '").append(code)
-                        .append("' уже используется\n");
+                errorMessage.append("Строка ").append(i + 1)
+                        .append(": Код операции '").append(code)
+                        .append("' должен быть шестнадцатеричным числом\n");
                 isValid = false;
             } else {
-                codes.add(code.toUpperCase());
+                try {
+                    int value = Integer.parseInt(code, 16);
+                    if (value <= 0) {
+                        errorMessage.append("Строка ").append(i + 1)
+                                .append(": Код операции '").append(code)
+                                .append("' должен быть больше нуля\n");
+                        isValid = false;
+                    } else if (value > 0x3F) {
+                        errorMessage.append("Строка ").append(i + 1)
+                                .append(": Код операции '").append(code)
+                                .append("' должен быть меньше или равен 3Fh\n");
+                        isValid = false;
+                    }
+                } catch (NumberFormatException e) {
+                    errorMessage.append("Строка ").append(i + 1)
+                            .append(": Код операции '").append(code)
+                            .append("' должен быть корректным шестнадцатеричным числом\n");
+                    isValid = false;
+                }
+
+                if (codes.contains(code.toUpperCase())) {
+                    errorMessage.append("Строка ").append(i + 1)
+                            .append(": Код операции '").append(code)
+                            .append("' уже используется\n");
+                    isValid = false;
+                } else {
+                    codes.add(code.toUpperCase());
+                }
             }
+
 
             if (size.isEmpty()) {
                 errorMessage.append("Строка ").append(i + 1).append(": Размер не может быть пустым\n");
@@ -275,6 +289,10 @@ public class CodeInputPanel extends JPanel {
         String defaultSource = """
                 PROG START 100h
                      JMP L1
+                     JMP L1
+                     JMP L1
+                     JMP B4
+                     JMP B4
                 A1   RESB 10
                 A2   RESW 20
                 B1   WORD 4096
