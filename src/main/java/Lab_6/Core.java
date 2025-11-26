@@ -1,11 +1,9 @@
-package Lab_5;
+package Lab_6;
 
 import javax.swing.*;
 import java.awt.*;
-import java.util.ArrayList;
-import java.util.Iterator;
+import java.util.*;
 import java.util.List;
-import java.util.Set;
 
 public class Core extends JFrame {
     private CodeInputPanel codeInputPanel;
@@ -18,7 +16,7 @@ public class Core extends JFrame {
     String addressingMode;
     List<String[]> symTable = new ArrayList<>();
     List<String[]> resultTable = new ArrayList<>();
-    List<String> modTable = new ArrayList<>();
+    List<String[]> modTable = new ArrayList<>();
 
     int startAddress = 0;
     int endAddress = 0;
@@ -36,6 +34,8 @@ public class Core extends JFrame {
     String operation;
     String operand_1;
     String operand_2;
+
+    String currentModule;
 
     public Core() {
         initializeComponents();
@@ -101,6 +101,7 @@ public class Core extends JFrame {
         step(line);
 
         if (!ERROR.isEmpty()) {
+            ERROR = lineID + " -- " + ERROR;
             processingPanel.showErrorMessage(ERROR, true);
             controlPanel.enableStepButton(false);
             controlPanel.enableRunButton(false);
@@ -144,6 +145,7 @@ public class Core extends JFrame {
         lockInputs(false);
 
         if (!ERROR.isEmpty()) {
+            ERROR = lineID + " -- " + ERROR;
             controlPanel.enableStepButton(false);
             controlPanel.enableRunButton(false);
             processingPanel.showErrorMessage(ERROR, true);
@@ -179,19 +181,27 @@ public class Core extends JFrame {
 
     private void updateTables() {
         if (!symTable.isEmpty()) {
-            String[][] symData = new String[symTable.size()][3];
+            String[][] symData = new String[symTable.size()][5];
             for (int i = 0; i < symTable.size(); i++) {
                 symData[i][0] = symTable.get(i)[0];
                 symData[i][1] = symTable.get(i)[1];
                 symData[i][2] = symTable.get(i)[2];
+                symData[i][3] = symTable.get(i)[3];
+                symData[i][4] = symTable.get(i)[4];
             }
             processingPanel.updateSymbolTable(symData);
         }
 
         if (!modTable.isEmpty()) {
-            String[] modData = new String[modTable.size()];
+            String[][] modData = new String[modTable.size()][3];
             for (int i = 0; i < modTable.size(); i++) {
-                modData[i] = modTable.get(i);
+                String[] row = modTable.get(i);
+                if (row != null && row.length >= 3) {
+                    modData[i] = new String[]{row[0], row[1], row[2]};
+                } else {
+                    modData[i] = new String[]{"", "", ""};
+                }
+
             }
             processingPanel.updateModificationTable(modData);
         }
@@ -202,9 +212,9 @@ public class Core extends JFrame {
     }
 
     private void configureWindow() {
-        setTitle("Однопросмотровый ассемблер для программ в перемещаемом формате");
+        setTitle("Однопросмотровый ассемблер для программ в полном перемещаемом формате");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setSize(1300, 1000);
+        setSize(1500, 1000);
         setLocationRelativeTo(null);
         setResizable(false);
     }
@@ -231,107 +241,192 @@ public class Core extends JFrame {
 
         }
 
+        if (line.isEmpty()) {
+            lineID += 1;
+            return;
+        }
+
         if (prepareLine(line)) {
             if (!ERROR.isEmpty()) return;
             if (operation.equalsIgnoreCase("START")) {
                 if (startFlag) {
-                    ERROR = lineID + " -- Ошибка: Повторное использование START";
+                    ERROR = "Ошибка: Повторное использование START";
                     return;
                 }
                 if (label.isEmpty()) {
-                    ERROR = lineID + " -- Ошибка: Не задано имя программы";
+                    ERROR = "Ошибка: Не задано имя программы";
                     return;
                 }
 
                 if (isNumber(operand_1)) {
                     currentAddress = parseNumber(operand_1);
                     if (currentAddress != 0) {
-                        ERROR = lineID + " -- Ошибка: Неверный адрес начала программы";
+                        ERROR = "Ошибка: Неверный адрес начала программы";
                         return;
                     }
                     startAddress = currentAddress;
                 } else {
-                    ERROR = lineID + " -- Ошибка: Адрес должен быть числом";
+                    ERROR ="Ошибка: Адрес должен быть числом";
                     return;
                 }
 
                 if (!operand_2.isEmpty()) {
-                    ERROR = lineID + " -- Ошибка: Некорректная операндная часть";
+                    ERROR = "Ошибка: Некорректная операндная часть";
                     return;
                 }
+                currentModule = label;
                 startFlag = true;
-                rowToResultTable("H", label, operand_1, "", "", "");
+                symTable.add(new String[]{label, label, "", "", "Модуль"});
+                int addres = parseNumber(operand_1);
+                rowToResultTable("H", label, hexAddress(addres), "", "", "");
             }
+
             if (operation.equalsIgnoreCase("END")) {
                 if (!startFlag) {
-                    ERROR = lineID + " -- Ошибка: END без START";
+                    ERROR = "Ошибка: END без START";
                     return;
                 }
                 if (!label.isEmpty()) {
-                    ERROR = lineID + " -- Ошибка: метка у директивы END";
+                    ERROR = "Ошибка: метка у директивы END";
                     return;
                 }
 
                 if (!operand_1.isEmpty()) {
-                    ERROR = lineID + " -- Ошибка: некорректная операндная часть";
+                    ERROR = "Ошибка: некорректная операндная часть";
                     return;
                 }
 
                 if (!operand_2.isEmpty()) {
-                    ERROR = lineID + " -- Ошибка: некорректная операндная часть";
+                    ERROR = "Ошибка: некорректная операндная часть";
                     return;
                 }
 
+                for (String[] check : symTable) {
+                    if (check[0].equals(check[1])) continue;
+                    if (check[2].isEmpty() && check[0].equals(currentModule) && (check[4].isEmpty() || check[4].equals("ВИ"))) {
+                        ERROR = "Ошибка: Неопределенная метка " + check[1] + " в модуле " + check[0];
+                        return;
+                    }
+                }
+
                 for (int j = 0; j < modTable.size(); j++){
-                    rowToResultTable("M", modTable.get(j), "", "", "", "");
+                    if (modTable.get(j)[0].equals(currentModule)) {
+                        rowToResultTable("M", modTable.get(j)[1], modTable.get(j)[2], "", "", "");
+                    }
                 }
 
                 endFlag = true;
                 endAddress = currentAddress;
 
-                resultTable.get(0)[3] = hexAddress(endAddress - startAddress);
+                for (String[] row: resultTable){
+                    if (row[1].equals(currentModule)) {
+                        row[3] = hexAddress(currentAddress - startAddress);
+                    }
+                }
+
                 rowToResultTable("E", hexAddress(startAddress), "", "", "", "");
 
+                return;
+            }
+
+            if (operation.equalsIgnoreCase("CSECT")) {
+
+                if (label.isEmpty()){
+                    ERROR = "Ошибка: Не задано имя модуля";
+                    return;
+                }
+
+                if (!operand_1.isEmpty()) {
+                    ERROR = "Ошибка: некорректная операндная часть";
+                    return;
+                }
+
+                if (!operand_2.isEmpty()) {
+                    ERROR = "Ошибка: некорректная операндная часть";
+                    return;
+                }
+
                 for (String[] check : symTable) {
-                    if (check[1].isEmpty()) {
-                        ERROR = "Ошибка: Неопределенная метка " + check[0];
+                    if (check[0].equals(check[1])) continue;
+                    if (check[2].isEmpty() && check[0].equals(currentModule) && (check[4].isEmpty() || check[4].equals("ВИ"))) {
+                        ERROR = "Ошибка: Неопределенная метка " + check[1] + " в модуле " + check[0];
                         return;
                     }
                 }
+
+                for (String[] row: resultTable){
+                    if (row[1].equals(currentModule)) {
+                        row[3] = hexAddress(currentAddress - startAddress);
+                    }
+                }
+
+                for (String[] strings : modTable) {
+                    if (strings[0].equals(currentModule)) {
+                        rowToResultTable("M", strings[1], strings[2], "", "", "");
+                    }
+                }
+
+                rowToResultTable("E", hexAddress(startAddress), "", "", "", "");
+                rowToResultTable("", "", "", "", "", "");
+
+                currentModule = label;
+                startAddress = 0;
+                endAddress = 0;
+                currentAddress = 0;
+
+                symTable.add(new String[]{label, label, "", "", "Модуль"});
+                rowToResultTable("H", label, hexAddress(startAddress), "", "", "");
+
                 return;
             }
 
             if (!label.isEmpty() && startFlag && !operation.equalsIgnoreCase("START")) {
                 String actualLabel = getActualLabel(label);
                 if (findLabel(actualLabel) == -1) {
-                    symTable.add(new String[]{actualLabel, hexAddress(currentAddress), ""});
+                    if (isExtDef(actualLabel, symTable)) {
+                        for (int i = 0; i < symTable.size(); i++){
+                            String[] row = symTable.get(i);
+                            if (row[0].equals(currentModule) && row[1].equals(actualLabel) && row[4].equals("ВИ"))
+                                row[2] = hexAddress(currentAddress);
+                        }
+                        for (int i = 0; i < resultTable.size(); i++){
+                            String[] row = resultTable.get(i);
+                            if (row[0].equals("D") && row[1].equals(actualLabel)) row[2] = hexAddress(currentAddress);
+                        }
+                    } else {
+                        symTable.add(new String[]{currentModule, actualLabel, hexAddress(currentAddress), "", ""});
+                    }
 
                     Iterator<String[]> iterator = symTable.iterator();
                     while (iterator.hasNext()) {
                         String[] check = iterator.next();
-                        if (check[0].equals(actualLabel) && check[1].isEmpty()) {
+                        if (check[1].equals(actualLabel) && check[2].isEmpty() && check[0].equals(currentModule)) {
                             for (String[] l : resultTable) {
-                                String resultLabel = l[4];
-                                String commandAddress = l[1];
-                                if (isRelativeAddressing(resultLabel)) {
-                                    resultLabel = getActualLabel(resultLabel);
-                                    if (resultLabel.equals(actualLabel)) {
-                                        l[4] = hexAddress(
-                                                Integer.parseInt(findLabelAddress(actualLabel), 16) -
-                                                        (Integer.parseInt(commandAddress, 16) + Integer.parseInt(l[2], 16) / 2));
+                                    String resultLabel = l[4];
+                                    String commandAddress = l[1];
+                                    if (isRelativeAddressing(resultLabel)) {
+                                        resultLabel = getActualLabel(resultLabel);
+                                        if (resultLabel.equals(actualLabel)) {
+                                            l[4] = hexAddress(
+                                                    Integer.parseInt(findLabelAddress(actualLabel), 16) -
+                                                            (Integer.parseInt(commandAddress, 16) + Integer.parseInt(l[2], 16) / 2));
+                                        }
+                                    } else {
+                                        if (resultLabel.equals(actualLabel)) {
+                                            l[4] = hexAddress(currentAddress);
+                                        }
                                     }
-                                } else {
-                                    if (resultLabel.equals(actualLabel)) {
-                                        l[4] = hexAddress(currentAddress);
-                                    }
-                                }
 
                             }
-                            iterator.remove();
+                            if (!isExtDef(actualLabel, symTable)) {
+                                iterator.remove();
+                            } else {
+                                check[3] = "";
+                            }
                         }
                     }
                 } else {
-                    ERROR = lineID + " -- Ошибка: Метка уже существует";
+                    ERROR = "Ошибка: Метка уже существует";
                     return;
                 }
             }
@@ -342,26 +437,26 @@ public class Core extends JFrame {
                     case "WORD":
                         increment = 3;
                         if (parseNumber(operand_1) < 0 || parseNumber(operand_1) > parseNumber("ffffffh")) {
-                            ERROR = lineID + " -- Ошибка: некорректное числовое значение";
+                            ERROR = "Ошибка: некорректное числовое значение";
                             return;
                         }
                         if (!operand_2.isEmpty()) {
-                            ERROR = lineID + " -- Ошибка: Некорректная операндная часть";
+                            ERROR = "Ошибка: Некорректная операндная часть";
                             return;
                         }
                         rowToResultTable("T", hexAddress(currentAddress), "06", "", hexAddress(parseNumber(operand_1)), "");
                         break;
                     case "RESW":
                         if (!isNumber(operand_1)) {
-                            ERROR = lineID + " -- Ошибка: RESW требует числового операнда";
+                            ERROR = "Ошибка: RESW требует числового операнда";
                             return;
                         }
                         if (parseNumber(operand_1) < 0) {
-                            ERROR = lineID + " -- Ошибка: RESW требует неотрицательного числа";
+                            ERROR = "Ошибка: RESW требует неотрицательного числа";
                             return;
                         }
                         if (!operand_2.isEmpty()) {
-                            ERROR = lineID + " -- Ошибка: Некорректная операндная часть";
+                            ERROR = "Ошибка: Некорректная операндная часть";
                             return;
                         }
                         increment = 3 * parseNumber(operand_1);
@@ -369,11 +464,11 @@ public class Core extends JFrame {
                         break;
                     case "RESB":
                         if (!isNumber(operand_1)) {
-                            ERROR = lineID + " -- Ошибка: RESB требует числового операнда";
+                            ERROR = "Ошибка: RESB требует числового операнда";
                             return;
                         }
                         if (!operand_2.isEmpty()) {
-                            ERROR = lineID + " -- Ошибка: Некорректная операндная часть";
+                            ERROR = "Ошибка: Некорректная операндная часть";
                             return;
                         }
                         increment = parseNumber(operand_1);
@@ -382,20 +477,144 @@ public class Core extends JFrame {
                     case "BYTE":
                         int size = calcByteSize(operand_1);
                         if (size == -1) {
-                            ERROR = lineID + " -- Ошибка: Некорректный операнд BYTE " + operand_1;
+                            ERROR = "Ошибка: Некорректный операнд BYTE " + operand_1;
                             return;
                         }
                         String code = getByteObjectCode(operand_1);
                         if (code == null) {
-                            ERROR = lineID + " -- " + "Ошибка: некорректный BYTE операнд " + operand_1;
+                            ERROR = "Ошибка: некорректный BYTE операнд " + operand_1;
                             return;
                         }
                         if (!operand_2.isEmpty()) {
-                            ERROR = lineID + " -- Ошибка: Некорректная операндная часть";
+                            ERROR = "Ошибка: Некорректная операндная часть";
                             return;
                         }
                         rowToResultTable("T", hexAddress(currentAddress), String.format("%02X", size * 2), "", code, "");
                         increment = size;
+                        break;
+                    case "EXTREF":
+                        if (!label.isEmpty()) {
+                            ERROR = "Ошибка: нельзя поcтавить метку на EXTREF";
+                            return;
+                        }
+                        if ((operand_1 == null || operand_1.isEmpty()) && (operand_2 == null || operand_2.isEmpty())) {
+                            ERROR = "Ошибка: EXTREF требует список имён";
+                            return;
+                        }
+                        String allRefOperands = operand_1;
+                        if (operand_2 != null && !operand_2.isEmpty()) {
+                            allRefOperands += "," + operand_2;
+                        }
+                        String[] refSymbols = allRefOperands.split(",");
+                        for (String sym : refSymbols) {
+                            sym = sym.trim();
+                            if (sym.isEmpty()) continue;
+                            if (!isLabel(sym)) {
+                                ERROR = "Ошибка: Некорректное имя во внешней ссылке: " + sym;
+                                return;
+                            }
+                            if (findLabel(sym) != -1) {
+                                ERROR = "Ошибка: Символ " + sym + " уже существует в текущем модуле";
+                                return;
+                            }
+                            symTable.add(new String[]{currentModule, sym, hexAddress(0), "", "ВС"});
+                            boolean inserted = false;
+
+                            for (int i = 0; i < resultTable.size(); i++) {
+                                String[] row = resultTable.get(i);
+
+                                if (row[0].equals("H") && row[1].equals(currentModule)) {
+
+                                    int insertPos = i + 1;
+
+                                    while (insertPos < resultTable.size()
+                                            && resultTable.get(insertPos)[0].equals("D")) {
+                                        insertPos++;
+                                    }
+
+                                    while (insertPos < resultTable.size()
+                                            && resultTable.get(insertPos)[0].equals("R")) {
+                                        insertPos++;
+                                    }
+
+                                    resultTable.add(insertPos, new String[]{"R", sym, "", "", ""});
+                                    inserted = true;
+                                    break;
+                                }
+                            }
+
+                            if (!inserted) {
+                                resultTable.add(new String[]{"R", sym, "", "", ""});
+                            }
+                        }
+                        break;
+                    case "EXTDEF":
+                        if (!label.isEmpty()) {
+                            ERROR = "Ошибка: нельзя поcтавить метку на EXTDEF";
+                            return;
+                        }
+                        if ((operand_1 == null || operand_1.isEmpty()) && (operand_2 == null || operand_2.isEmpty())) {
+                            ERROR = "Ошибка: EXTDEF требует список имён";
+                            return;
+                        }
+                        String allOperands = operand_1;
+                        if (operand_2 != null && !operand_2.isEmpty()) {
+                            allOperands += "," + operand_2;
+                        }
+
+                        String[] defSymbols = allOperands.split(",");
+                        for (String sym : defSymbols) {
+                            sym = sym.trim();
+                            if (sym.isEmpty()) continue;
+                            if (!isLabel(sym)) {
+                                ERROR = "Ошибка: Некорректное имя во внешнем определении: " + sym;
+                                return;
+                            }
+
+                            for (String[] existing : symTable) {
+                                String existingName = existing[1];
+                                String existingType = existing[4];
+                                String existingModule = existing[0];
+                                if ("ВИ".equals(existingType) && existingName.equalsIgnoreCase(sym)) {
+                                    if (!existingModule.equals(currentModule)) {
+                                        ERROR ="Ошибка: внешнее имя " + sym +
+                                                " уже определено в модуле " + existingModule;
+                                        return;
+                                    }
+                                }
+                            }
+                            int existingIdx = findLabel(sym);
+                            if (existingIdx != -1) {
+                                String[] entry = symTable.get(existingIdx);
+                                entry[3] = "ВИ";
+                                continue;
+                            }
+                            symTable.add(new String[] {currentModule, sym, "", "", "ВИ"});
+                            boolean inserted = false;
+
+                            for (int i = 0; i < resultTable.size(); i++) {
+                                String[] row = resultTable.get(i);
+
+                                if (row[0].equals("H") && row[1].equals(currentModule)) {
+
+                                    int insertPos = i + 1;
+
+                                    while (insertPos < resultTable.size()
+                                            && resultTable.get(insertPos)[0].equals("D")) {
+                                        insertPos++;
+                                    }
+
+                                    resultTable.add(insertPos, new String[]{"D", sym, "", "", ""});
+                                    inserted = true;
+                                    break;
+                                }
+                            }
+
+                            if (!inserted) {
+                                resultTable.add(new String[]{"D", sym, "", "", ""});
+                            }
+                        }
+
                         break;
                 }
             } else {
@@ -403,7 +622,7 @@ public class Core extends JFrame {
                 int opIndex = findOperation(operation);
                 int size = Integer.parseInt(opTable[findOperation(operation)][2]);
                 if (opIndex == -1) {
-                    ERROR = lineID + " -- Ошибка: Неизвестная операция " + operation;
+                    ERROR = "Ошибка: Неизвестная операция " + operation;
                     return;
                 } else {
                     operation = opTable[opIndex][1];
@@ -416,11 +635,11 @@ public class Core extends JFrame {
                 opr = Integer.parseInt(operation, 16);
                 if (size == 4){
                     if (!isLabel(operand_1)){
-                        ERROR = lineID + " -- " + "Ошибка: некорректный операнд " + operand_1;
+                        ERROR = "Ошибка: некорректный операнд " + operand_1;
                         return;
                     }
                     if (!operand_2.isEmpty()){
-                        ERROR = lineID + " -- " + "Ошибка: лишний операнд";
+                        ERROR = "Ошибка: лишний операнд";
                         return;
                     }
                 }
@@ -432,7 +651,7 @@ public class Core extends JFrame {
                         if (isRegister(operand_1) && isRegister(operand_2)) {
                             ERROR = "";
                         } else {
-                            ERROR = lineID + " -- " + "Ошибка: некорректный формат операндной части";
+                            ERROR = "Ошибка: некорректный формат операндной части";
                             return;
                         }
                     }
@@ -440,25 +659,25 @@ public class Core extends JFrame {
 
                 if (size == 1){
                     if (!operand_1.isEmpty() || !operand_2.isEmpty()) {
-                        ERROR = lineID + " -- " + "Ошибка: некорректный формат операндной части";
+                        ERROR = "Ошибка: некорректный формат операндной части";
                         return;
                     }
                 }
                 String op1 = operand_1;
                 operand_1 = resolveOperand(operand_1, currentAddress + size);
                 if (!ERROR.isEmpty()) {
-                    ERROR = lineID + " -- " + ERROR;
+                    ERROR = ERROR;
                     return;
                 }
 
                 operand_2 = resolveOperand(operand_2, currentAddress + size);
                 if (!ERROR.isEmpty()) {
-                    ERROR = lineID + " -- " + ERROR;
+                    ERROR = ERROR;
                     return;
                 }
                 String code = String.format("%02X", opr) + (operand_1.isEmpty() ? "" : operand_1) + (operand_2.isEmpty() ? "" : operand_2);
                 if (code.length() > size * 2 + 2) {
-                    ERROR = lineID + " -- " + "Ошибка: превышена длина команды ";
+                    ERROR ="Ошибка: превышена длина команды ";
                     return;
                 }
                 if (!operation.isEmpty()) {
@@ -475,7 +694,11 @@ public class Core extends JFrame {
                                 return;
                             }
                             opr = opr * 4 + 1;
-                            modTable.add(hexAddress(currentAddress));
+                            if (isExtRef(op1, symTable)) {
+                                modTable.add(new String[] {currentModule, hexAddress(currentAddress), op1});
+                            } else {
+                                modTable.add(new String[]{currentModule, hexAddress(currentAddress), ""});
+                            }
                         }
                     }
                     else{
@@ -491,12 +714,12 @@ public class Core extends JFrame {
             }
 
             if (currentAddress + increment > MAX_MEMORY_ADR) {
-                ERROR = lineID + " -- Ошибка: Переполнение памяти";
+                ERROR = "Ошибка: Переполнение памяти";
                 return;
             }
             currentAddress += increment;
         } else {
-            ERROR = lineID + " -- " + ERROR;
+            ERROR = ERROR;
             return;
         }
 
@@ -507,7 +730,7 @@ public class Core extends JFrame {
             }
             for (int i = 0; i < symTable.size(); i++){
                 String[] check = symTable.get(i);
-                if (check[1] == ""){
+                if (check[2] == null || check[2].isEmpty()){
                     ERROR = "Ошибка: Неопределенная метка " + check[0];
                     return;
                 }
@@ -546,9 +769,13 @@ public class Core extends JFrame {
         } else if (isLabel(op)) {
             if (isRelativeAddressing(op)) {
                 String actualLabel = getActualLabel(op);
+                if (isExtRef(actualLabel, symTable)) {
+                    ERROR = "Ошибка: Косвенная адресация со внешними ссылками недопустима";
+                    return "";
+                }
                 String addr = findLabelAddress(actualLabel);
                 if (addr == null) {
-                    symTable.add(new String[]{actualLabel, "", hexAddress(currentAddress)});
+                    symTable.add(new String[]{currentModule, actualLabel, "", hexAddress(currentAddress), ""});
                     return op;
                 } else {
                     int relativeAddress = Integer.parseInt(addr, 16) - size;
@@ -557,7 +784,7 @@ public class Core extends JFrame {
             } else {
                 String addr = findLabelAddress(op);
                 if (addr == null) {
-                    symTable.add(new String[]{op, "", hexAddress(currentAddress)});
+                    symTable.add(new String[]{currentModule, op, "", hexAddress(currentAddress), ""});
                     return op;
                 }
                 return addr;
@@ -575,8 +802,8 @@ public class Core extends JFrame {
 
     private String findLabelAddress(String label) {
         for (int i = 0; i < symTable.size(); i++) {
-            if (symTable.get(i)[0].equalsIgnoreCase(label) && !symTable.get(i)[1].isEmpty()) {
-                return symTable.get(i)[1];
+            if (symTable.get(i)[1].equalsIgnoreCase(label) && !symTable.get(i)[2].isEmpty() && symTable.get(i)[0].equals(currentModule)) {
+                return symTable.get(i)[2];
             }
         }
         return null;
@@ -586,11 +813,29 @@ public class Core extends JFrame {
         if (s == null) return -1;
         for (int i = 0; i < symTable.size(); i++) {
             String[] entry = symTable.get(i);
-            if (entry != null && entry.length > 0 && s.equalsIgnoreCase(entry[0]) && !entry[1].isEmpty()) {
+            if (entry != null && entry.length > 0 && s.equalsIgnoreCase(entry[1]) && !entry[2].isEmpty() && symTable.get(i)[0].equals(currentModule)) {
                 return i;
             }
         }
         return -1;
+    }
+
+    private boolean isExtRef(String label, List<String[]> symTable) {
+        for (String[] row : symTable) {
+            if (row[1].equalsIgnoreCase(label) && row[0].equalsIgnoreCase(currentModule) && row[4].equalsIgnoreCase("ВС")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isExtDef(String label, List<String[]> symTable) {
+        for (String[] row : symTable) {
+            if (row[1].equalsIgnoreCase(label) && row[0].equalsIgnoreCase(currentModule) && row[4].equalsIgnoreCase("ВИ")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private String getByteObjectCode(String operand) {
@@ -701,7 +946,7 @@ public class Core extends JFrame {
                                   String operand_1,
                                   String operand_2){
         resultTable.add(new String[]{
-            letter, address, commandLength, commandCode, operand_1, operand_2
+                letter, address, commandLength, commandCode, operand_1, operand_2
         });
     }
 
@@ -742,9 +987,26 @@ public class Core extends JFrame {
         if (idx < tokens.size()) {
             if (isLabel(tokens.get(idx))) {
                 int value = findLabel(tokens.get(idx));
-                if (value != -1) {
-                    ERROR = "Ошибка: Данная метка уже объявлена\n";
-                    return false;
+                if (tokens.size() >= idx + 1) {
+                    if (!tokens.get(idx + 1).equalsIgnoreCase("CSECT")) {
+                        if (value != -1) {
+                            ERROR = "Ошибка: Данная метка уже объявлена\n";
+                            return false;
+                        }
+                    }
+                    else {
+                        for (String[] row: symTable){
+                            if (row[0].equals(tokens.get(idx))) {
+                                ERROR = "Ошибка: Данная метка уже объявлена\n";
+                                return false;
+                            }
+                        }
+                    }
+                } else {
+                    if (value != -1) {
+                        ERROR = "Ошибка: Данная метка уже объявлена\n";
+                        return false;
+                    }
                 }
                 label = tokens.get(idx).toUpperCase();
                 idx++;
@@ -752,8 +1014,7 @@ public class Core extends JFrame {
                 if (isDirective(tokens.get(idx))) {
                     operation = tokens.get(idx).toUpperCase();
                     idx++;
-                }
-                else if (findOperation(tokens.get(idx)) == -1) {
+                } else if (findOperation(tokens.get(idx)) == -1) {
                     ERROR = "Ошибка: Некорректная метка\n";
                     return false;
                 }
@@ -943,7 +1204,7 @@ public class Core extends JFrame {
     }
 
     private static final Set<String> DIRECTIVES = Set.of(
-            "START", "END", "BYTE", "WORD", "RESB", "RESW"
+            "START", "END", "BYTE", "WORD", "RESB", "RESW", "CSECT", "EXTDEF", "EXTREF"
     );
 
     private boolean isRegister(String s) {

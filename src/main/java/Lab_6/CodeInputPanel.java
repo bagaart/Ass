@@ -1,4 +1,4 @@
-package Lab_5;
+package Lab_6;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
@@ -291,27 +291,38 @@ public class CodeInputPanel extends JPanel {
 
     private void initializeDefaultData() {
         String defaultSource = """
-                PROG START 0
-                     JMP     [L1]
-                     JMP     L1
-                L1   LOADR1  B1
-                     JMP     [L1]
-                     JMP     [L1]
-                     JMP     L1
-                A1   RESB    10
-                A2   RESW    20
-                B1   WORD    4096
-                B2   BYTE    X"2F4C008A"
-                B3   BYTE    C"Hello,Assembler!"
-                B4   BYTE    128
-                     LOADR2  B4
-                     ADD     R1 R2
-                     SUB     R1 R2
-                     SAVER1  B1
-                     NOP
-                     END
-                """;
-
+            PROG  START   0h
+                  EXTREF  B5
+                  EXTDEF  A1
+                  JMP     L1
+            A1    RESB    10
+            A2    RESW    20
+            B1    WORD    4096
+            B2    BYTE    X"2F4C008A"
+            B3    BYTE    C"Hello,Assembler!"
+            B4    BYTE    128
+            L1    LOADR1  B1
+                  LOADR2  B5
+                  ADD     R1 R2
+                  SUB     R1 R2
+                  SAVER1  B1
+                  NOP
+                 
+            NEW1  csect
+            
+            NEW   CSECT
+                  EXTDEF  B5
+                  EXTREF  A1
+            B5    LOADR2  A1
+                  ADD     R2 R2
+                  NOP
+            NEW6  CSECT
+                  EXTREF  A1
+                  LOADR2  A1
+            B5    LOADR2  A1
+                  ADD     R2 R2
+                  NOP
+                  END""";
 
         sourceCodeArea.setText(defaultSource);
 
