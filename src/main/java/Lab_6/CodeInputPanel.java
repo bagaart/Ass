@@ -313,9 +313,11 @@ public class CodeInputPanel extends JPanel {
             NEW   CSECT
                   EXTDEF  B5
                   EXTREF  A1
+                  ADD     R4 R3
             B5    LOADR2  A1
                   ADD     R2 R2
                   NOP
+                  
             NEW6  CSECT
                   EXTREF  A1
                   LOADR2  A1

@@ -418,7 +418,7 @@ public class Core extends JFrame {
                                     }
 
                             }
-                            if (!isExtDef(actualLabel, symTable)) {
+                            if (!isExtDef(actualLabel, symTable) || (isExtDef(actualLabel, symTable) && !findLabelAddress(actualLabel).isEmpty())) {
                                 iterator.remove();
                             } else {
                                 check[3] = "";
@@ -509,8 +509,20 @@ public class Core extends JFrame {
                         for (String sym : refSymbols) {
                             sym = sym.trim();
                             if (sym.isEmpty()) continue;
+                            if (!sym.isEmpty()) {
+                                char first = operand_1.charAt(0);
+                                if (!(isLetter(first) || isSpecialSymbol(first))) {
+                                    ERROR = "Ошибка: Некорректное имя метки\n";
+                                    return;
+                                }
+                            }
                             if (!isLabel(sym)) {
                                 ERROR = "Ошибка: Некорректное имя во внешней ссылке: " + sym;
+                                return;
+                            }
+                            if (isExtDef(sym, symTable)) {
+                                ERROR ="Ошибка: внешняя ссылка " + sym +
+                                        " уже определена как внешнее имя в модуле " + currentModule;
                                 return;
                             }
                             if (findLabel(sym) != -1) {
@@ -566,6 +578,13 @@ public class Core extends JFrame {
                         for (String sym : defSymbols) {
                             sym = sym.trim();
                             if (sym.isEmpty()) continue;
+                            if (!sym.isEmpty()) {
+                                char first = operand_1.charAt(0);
+                                if (!(isLetter(first) || isSpecialSymbol(first))) {
+                                    ERROR = "Ошибка: Некорректное имя метки\n";
+                                    return;
+                                }
+                            }
                             if (!isLabel(sym)) {
                                 ERROR = "Ошибка: Некорректное имя во внешнем определении: " + sym;
                                 return;
@@ -575,12 +594,15 @@ public class Core extends JFrame {
                                 String existingName = existing[1];
                                 String existingType = existing[4];
                                 String existingModule = existing[0];
+                                if (isExtRef(sym, symTable)) {
+                                    ERROR ="Ошибка: внешнее имя " + sym +
+                                            " уже определено как внешняя ссылка в модуле " + existingModule;
+                                    return;
+                                }
                                 if ("ВИ".equals(existingType) && existingName.equalsIgnoreCase(sym)) {
-                                    if (!existingModule.equals(currentModule)) {
-                                        ERROR ="Ошибка: внешнее имя " + sym +
+                                    ERROR ="Ошибка: внешнее имя " + sym +
                                                 " уже определено в модуле " + existingModule;
-                                        return;
-                                    }
+                                    return;
                                 }
                             }
                             int existingIdx = findLabel(sym);
@@ -682,15 +704,19 @@ public class Core extends JFrame {
                 }
                 if (!operation.isEmpty()) {
                     if (size == 4) {
+                        if (op1.equals(currentModule)) {
+                            ERROR = "Ошибка: символическое имя не может совпадать с именем модуля ";
+                            return;
+                        }
                         if (isRelativeAddressing(op1)){
                             if (opr * 4 + 2 > 255 ) {
-                                ERROR = " -- " + "Ошибка: некорректный код операции в ТКО ";
+                                ERROR = "Ошибка: некорректный код операции в ТКО ";
                                 return;
                             }
                             opr = opr * 4 + 2;
                         } else {
                             if (opr * 4 + 1 > 255) {
-                                ERROR = " -- " + "Ошибка: некорректный код операции в ТКО ";
+                                ERROR = "Ошибка: некорректный код операции в ТКО ";
                                 return;
                             }
                             opr = opr * 4 + 1;
@@ -710,13 +736,13 @@ public class Core extends JFrame {
                     }
                 }
                 increment = Integer.parseInt(opTable[opIndex][2]);
+                if (currentAddress + increment > MAX_MEMORY_ADR) {
+                    ERROR = "Ошибка: Переполнение памяти";
+                    return;
+                }
                 rowToResultTable("T", hexAddress(currentAddress), String.format("%02X", size * 2), String.format("%02X", opr), operand_1, operand_2);
             }
 
-            if (currentAddress + increment > MAX_MEMORY_ADR) {
-                ERROR = "Ошибка: Переполнение памяти";
-                return;
-            }
             currentAddress += increment;
         } else {
             ERROR = ERROR;
@@ -986,6 +1012,11 @@ public class Core extends JFrame {
         int idx = 0;
         if (idx < tokens.size()) {
             if (isLabel(tokens.get(idx))) {
+                char first = tokens.get(idx).charAt(0);
+                if (!(isLetter(first) || isSpecialSymbol(first))){
+                    ERROR = "Ошибка: Некорректное имя метки\n";
+                    return false;
+                }
                 int value = findLabel(tokens.get(idx));
                 if (tokens.size() >= idx + 1) {
                     if (!tokens.get(idx + 1).equalsIgnoreCase("CSECT")) {
