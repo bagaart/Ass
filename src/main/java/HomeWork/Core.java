@@ -10,7 +10,7 @@ public class Core {
     private List<String> res_tab = new ArrayList<>();
     private String[] source_code;
     private int line_id = 0;
-    private int def_line_id = 0;
+    private int def_line_id = -1;
     private String ERROR = "";
     private boolean end_flag = false;
     private boolean macro_record = false;
@@ -36,9 +36,9 @@ public class Core {
         if (!ERROR.isEmpty()) {
             return;
         }
-        if (line_id > this.source_code.length) {
+        if (line_id >= this.source_code.length) {
             can_be_editable = true;
-            line_id = 0;
+            reset();
             return;
         }
         can_be_editable = false;
@@ -46,8 +46,8 @@ public class Core {
         step(line);
         if (!ERROR.isEmpty()) {
             ERROR = (line_id + 1) + " -- " + ERROR;
-            if (!current_macro.isEmpty()) {
-                ERROR = ERROR + "Возможная строка с ошибкой - (" + String.join(" ", def_tab.get(def_line_id)).trim() + "). номер строки в таблице макроопредений - " + (def_line_id + 1);
+            if (!current_macro.isEmpty() && def_line_id != -1) {
+                ERROR = ERROR + " Возможная строка с ошибкой - (" + String.join(" ", def_tab.get(def_line_id)).trim() + "). номер строки в таблице макроопредений - " + (def_line_id + 1);
             }
             can_be_editable = true;
         }
@@ -63,10 +63,12 @@ public class Core {
 
     private boolean step(String line) {
         if (line.isEmpty()){
+            res_tab.add("");
             return true;
         }
         List<String> tokens = split_line(line);
         if (tokens.isEmpty() || (tokens.size() == 1 && tokens.getFirst().isEmpty())) {
+            res_tab.add("");
             return true;
         }
         int idx = 0;
@@ -99,7 +101,7 @@ public class Core {
                     label = label.substring(0, label.length() - 1) + "_" + unique_label_index + ":";
                     line = String.join(" ", label, mnemonic, String.join(" ", body) );
                 }
-                line = substituteMacroParams(line);
+                line = substituteVariables(line);
                 res_tab.add(line);
             } else {
                 def_tab.add(new String[] {"", line});
@@ -119,6 +121,14 @@ public class Core {
                 return true;
             }
             return false;
+        } else if (mnemonic.isEmpty() && body.length == 0 && !label.isEmpty()) {
+            if (macro_record) {
+                def_tab.add(new String[] {"", line});
+                return true;
+            } else {
+                res_tab.add(line);
+                return true;
+            }
         } else {
             ERROR = "Ошибка: нераспознанная команда макроязыка";
         }
@@ -197,12 +207,12 @@ public class Core {
             String init = body[1];
             String type;
             String value;
-            if (isStringLiteral(init)) {
-                type = "STRING";
-                value = init;
-            }
-            else if (isInteger(init)) {
+
+            if (isInteger(init)) {
                 type = "INT";
+                value = init;
+            } else if (isStringLiteral(init)) {
+                type = "STRING";
                 value = init;
             } else {
                 int srcIndex = findVarIndex(init);
@@ -485,11 +495,11 @@ public class Core {
             }
             if (result) {
                 st.iterations++;
-                if (st.iterations > 5000) {
-                    ERROR = "Ошибка: возможный бесконечный цикл WHILE, текущее условие - "
+                if (st.iterations > 5000000) {
+                    ERROR = "Ошибка: возможный бесконечный цикл WHILE (прошло 5000000 итераций) , текущее условие - "
                             + resolveValue(st.condition[0]) + " "
                             + st.condition[1] + " "
-                            + resolveValue(st.condition[2]);
+                            + resolveValue(st.condition[2]) + ". ";
                     return false;
                 }
             }
@@ -734,18 +744,20 @@ public class Core {
         }
         removeMacroParamsFromVarTab();
         macroParams.clear();
-        def_line_id = 0;
+        def_line_id = -1;
         current_macro = "";
         return true;
     }
-    private String substituteMacroParams(String line) {
+    private String substituteVariables(String line) {
+        if (line == null || line.isEmpty()) return line;
         List<String> tokens = split_line(line);
         for (int i = 0; i < tokens.size(); i++) {
             String t = tokens.get(i);
-            if (t.startsWith("&")) {
-                int idx = findVarIndex(t);
-                if (idx != -1) {
-                    String[] var = var_tab.get(idx);
+            if (isStringLiteral(t)) continue;
+            int varIdx = findVarIndex(t);
+            if (varIdx != -1) {
+                String[] var = var_tab.get(varIdx);
+                if (var[2] != null && !var[2].isEmpty()) {
                     tokens.set(i, var[2]);
                 }
             }

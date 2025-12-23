@@ -805,7 +805,11 @@ public class Core extends JFrame {
                     return op;
                 } else {
                     int relativeAddress = Integer.parseInt(addr, 16) - size;
-                    return String.format("%06X",relativeAddress);
+                    String result = String.format("%06X",relativeAddress);
+                    if (result.length() > 6) {
+                        result = result.substring(result.length() - 6);
+                    }
+                    return result;
                 }
             } else {
                 String addr = findLabelAddress(op);
