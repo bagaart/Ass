@@ -28,6 +28,7 @@ public class Core {
     private final List<WhileState> whileStack = new ArrayList<>();
     private Map<String, String[]> macroParams = new HashMap<>();
     private int unique_label_index = 0;
+    private int endFlag = -1;
 
     public void one_step(String[] source_code){
         if (this.source_code == null || this.source_code.length == 0) {
@@ -51,19 +52,23 @@ public class Core {
             }
             can_be_editable = true;
         }
+        if ((endFlag == 1 || line_id == this.source_code.length - 1) && macro_record) {
+            ERROR = "Ошибка: Ожидалось MEND. Незавершенное макроопределение";
+        }
         nextLine();
     }
 
     public void full_pass(String[] source_code){
         reset();
-        for (int i = 0; i < source_code.length; i++) {
+        setSourceCode(source_code);
+        while (line_id < source_code.length && ERROR.isEmpty()) {
             one_step(source_code);
         }
     }
 
     private boolean step(String line) {
+        if (endFlag == 1) return true;
         if (line.isEmpty()){
-            res_tab.add("");
             return true;
         }
         List<String> tokens = split_line(line);
@@ -96,6 +101,9 @@ public class Core {
             body = tokens.subList(idx, tokens.size()).toArray(new String[0]);
         }
         if (isAssemblyMnemonic(mnemonic)) {
+            if (mnemonic.equalsIgnoreCase("END")) {
+                endFlag = 1;
+            }
             if (!macro_record) {
                 if (!label.isEmpty()) {
                     label = label.substring(0, label.length() - 1) + "_" + unique_label_index + ":";
@@ -108,7 +116,10 @@ public class Core {
             }
             return true;
         } else if (isMacroMnemonic(mnemonic)) {
-            if (macroMnemonics(macroName, mnemonic, body, line)) {
+            String labelOrMacroName;
+            if (!macroName.isEmpty()) labelOrMacroName = macroName;
+            else labelOrMacroName = label;
+            if (macroMnemonics(labelOrMacroName, mnemonic, body, line)) {
                 return true;
             }
             return false;
@@ -117,7 +128,7 @@ public class Core {
                 ERROR = "Ошибка: Макровызов внутри макроса недопустим";
                 return false;
             }
-            if (macroGeneration(label, mnemonic, body, line)) {
+            if (macroGeneration(macroName, mnemonic, body, line)) {
                 return true;
             }
             return false;
@@ -184,7 +195,7 @@ public class Core {
                 return false;
             }
             if (body.length > 2) {
-                ERROR = "Ошибка: присутствуют лишние данные. Ожидалось - VAR <имя переменной> [значение]";
+                ERROR = "Ошибка: присутствуют лишние данные. Ожидалось - VAR <имя переменной> [значение]. Проверьте наличие кавычки.";
                 return false;
             }
             if (macro_record) {
@@ -208,13 +219,20 @@ public class Core {
             String type;
             String value;
 
+            if (body[1].startsWith("&")) {
+                init = init.substring(1);
+            }
+
             if (isInteger(init)) {
                 type = "INT";
                 value = init;
             } else if (isStringLiteral(init)) {
                 type = "STRING";
                 value = init;
-            } else {
+            } else if (can_be_var_name(init)) {
+                if (body[1].startsWith("&")) {
+                    init = "&" + init;
+                }
                 int srcIndex = findVarIndex(init);
                 if (srcIndex == -1) {
                     ERROR = "Ошибка: переменной не существует - " + init +  ".";
@@ -223,6 +241,10 @@ public class Core {
                 String[] src = var_tab.get(srcIndex);
                 type = src[1];
                 value = src[2];
+            } else {
+
+                ERROR = "Ошибка: некорректная инициализация переменной - " + body[0] + " значением - " + init + ".";
+                return false;
             }
             var_tab.add(new String[] {body[0], type, value, visible});
             return true;
@@ -452,7 +474,7 @@ public class Core {
             if (!ERROR.isEmpty()) return false;
             boolean result = compare(v1, v2, body[1]);
             WhileState st = new WhileState();
-            st.executionLine = isMacroExpansion() ? def_line_id : line_id;
+            st.executionLine = isMacroExpansion() ? def_line_id: line_id;
             st.condition = body;
             st.iterations = 0;
             whileStack.add(st);
@@ -670,11 +692,18 @@ public class Core {
         current_macro = macroName;
         String[] macroEntry = nam_tab.get(macroIndex);
         int defStart = Integer.parseInt(macroEntry[1]);
-        int defLen   = Integer.parseInt(macroEntry[2]);
+        int defLen = Integer.parseInt(macroEntry[2]);
         String macroHeader = def_tab.get(defStart)[1];
         Map<String, String> defaultParams = new LinkedHashMap<>();
         List<String> headerParams = parseMacroParams(macroHeader);
+        if (headerParams.isEmpty()) {
+            if (args.length > 0) {
+                ERROR = "Ошибка: макрос " + macroName + " не принимает параметров";
+                return false;
+            }
+        }
         for (String p : headerParams) {
+            if (p.isEmpty()) continue;
             if (!p.startsWith("&")) {
                 ERROR = "Ошибка: параметр макроса должен начинаться с &";
                 return false;
@@ -777,6 +806,9 @@ public class Core {
     }
     private List<String> parseMacroParams(String line) {
         List<String> params = new ArrayList<>();
+        if (line == null) return params;
+        line = line.trim();
+        if (line.isEmpty()) return params;
         String[] tokens = line.trim().split("\\s+");
         for (int i = 0; i < tokens.length; i++) {
             if (tokens[i].equalsIgnoreCase("MACRO")) continue;
@@ -879,6 +911,7 @@ public class Core {
         whileStack.clear();
         can_be_editable = true;
         unique_label_index = 0;
+        endFlag = 0;
     }
     public boolean is_letter(char c) {
         return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
@@ -905,6 +938,7 @@ public class Core {
         if (isMacroMnemonic(s)) return false;
         return true;
     }
+
     public boolean can_be_var_name(String s) {
         if (s.isEmpty()) return false;
         if (s.length() > 33) return false;

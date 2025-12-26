@@ -3,9 +3,6 @@ package HomeWork;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
 import java.util.Scanner;
 
 public class CLI {
@@ -87,7 +84,7 @@ public class CLI {
                 2  - Выполнить полный проход
                 3  - Показать исходный код
                 4  - Показать результирующий код
-                5  - Показать таблицу глобальных переменных
+                5  - Показать таблицу переменных
                 6  - Показать таблицу имён макросов
                 7  - Показать таблицу макроопределений
                 8  - Сохранить результирующий код
@@ -172,44 +169,66 @@ public class CLI {
     }
 
     private void saveResult() {
-        if (outputPath == null) {
-            System.out.print("Введите путь для сохранения: ");
-            outputPath = scanner.nextLine();
-        }
+        while (true) {
+            if (outputPath == null) {
+                System.out.print("Введите путь для сохранения (0 - отмена): ");
+                String input = scanner.nextLine().trim();
 
-        Path path = Path.of(outputPath);
+                if (input.equals("0")) {
+                    System.out.println("Сохранение отменено.");
+                    return;
+                }
 
-        if (Files.exists(path)) {
-            writeResult(path);
-            return;
-        }
-
-        System.out.println("""
-                Файл не существует:
-                1 - Создать файл
-                2 - Ввести другой путь
-                0 - Отмена
-                """);
-
-        System.out.print("> ");
-        switch (scanner.nextLine()) {
-            case "1" -> writeResult(path);
-            case "2" -> {
-                outputPath = null;
-                saveResult();
+                outputPath = input;
             }
-            default -> System.out.println("Сохранение отменено.");
+
+            Path path = Path.of(outputPath);
+
+            if (Files.exists(path)) {
+                if (writeResult(path)) {
+                    return;
+                } else {
+                    outputPath = null;
+                }
+            } else {
+                System.out.println("""
+                    Файл не существует:
+                    1 - Создать файл
+                    2 - Ввести другой путь
+                    0 - Отмена
+                    """);
+
+                System.out.print("> ");
+                switch (scanner.nextLine()) {
+                    case "1" -> {
+                        if (writeResult(path)) {
+                            return;
+                        } else {
+                            outputPath = null;
+                        }
+                    }
+                    case "2" -> outputPath = null;
+                    default -> {
+                        System.out.println("Сохранение отменено.");
+                        return;
+                    }
+                }
+            }
         }
     }
 
-    private void writeResult(Path path) {
+
+    private boolean writeResult(Path path) {
         try {
             Files.writeString(path, core.getResultCodeAsString());
             System.out.println("Результат сохранён: " + path);
+            return true;
         } catch (IOException e) {
             System.out.println("Ошибка записи файла: " + e.getMessage());
+            return false;
         }
     }
+
 
     private void requestInputFile() {
         while (true) {
@@ -329,4 +348,3 @@ public class CLI {
         );
     }
 }
-

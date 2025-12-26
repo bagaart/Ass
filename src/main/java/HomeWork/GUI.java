@@ -519,6 +519,12 @@ public class GUI extends JFrame {
         public void setEditable(boolean editable) {
             textArea.setEditable(editable);
         }
+
+        public void setLineNumbersEnable(boolean enabled) {
+            textArea.setEnabled(enabled);
+            textArea.setEditable(enabled);
+            textArea.setBackground(enabled ? Color.WHITE : Color.LIGHT_GRAY);
+        }
     }
 
     private Runnable on_data_changed;
@@ -545,6 +551,7 @@ public class GUI extends JFrame {
 
     public void enable_source_code(boolean enable) {
         source_code.setEditable(enable);
+        source_code.setLineNumbersEnable(enable);
     }
 
     public void setStepButtonListener(Runnable listener) {
@@ -564,4 +571,3 @@ public class GUI extends JFrame {
     }
 
 }
-
