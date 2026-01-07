@@ -29,6 +29,8 @@ public class Core {
     private Map<String, String[]> macroParams = new HashMap<>();
     private int unique_label_index = 0;
     private int endFlag = -1;
+    private Map<String, String> localLabelMap = new HashMap<>();
+
 
     public void one_step(String[] source_code){
         if (this.source_code == null || this.source_code.length == 0) {
@@ -93,6 +95,8 @@ public class Core {
                 }
             }
         }
+
+
         if (idx < tokens.size()) {
             mnemonic = tokens.get(idx);
             idx++;
@@ -512,13 +516,18 @@ public class Core {
                 } else {
                     line_id = st.executionLine;
                 }
+                unique_label_index++;
+
+                localLabelMap.clear();
+                collectLocalLabels();
+
             } else {
                 whileStack.remove(whileStack.size() - 1);
             }
             if (result) {
                 st.iterations++;
-                if (st.iterations > 5000000) {
-                    ERROR = "Ошибка: возможный бесконечный цикл WHILE (прошло 5000000 итераций) , текущее условие - "
+                if (st.iterations > 1000) {
+                    ERROR = "Ошибка: возможный бесконечный цикл WHILE (прошло 1000 итераций) , текущее условие - "
                             + resolveValue(st.condition[0]) + " "
                             + st.condition[1] + " "
                             + resolveValue(st.condition[2]) + ". ";
@@ -683,6 +692,7 @@ public class Core {
         return -1;
     }
     private boolean macroGeneration(String label, String macroName, String[] args, String line) {
+        localLabelMap.clear();
         unique_label_index++;
         int macroIndex = findMacro(macroName);
         if (macroIndex == -1) {
@@ -696,6 +706,7 @@ public class Core {
         String macroHeader = def_tab.get(defStart)[1];
         Map<String, String> defaultParams = new LinkedHashMap<>();
         List<String> headerParams = parseMacroParams(macroHeader);
+        collectLocalLabels();
         if (headerParams.isEmpty()) {
             if (args.length > 0) {
                 ERROR = "Ошибка: макрос " + macroName + " не принимает параметров";
@@ -775,14 +786,28 @@ public class Core {
         macroParams.clear();
         def_line_id = -1;
         current_macro = "";
+        localLabelMap.clear();
         return true;
     }
     private String substituteVariables(String line) {
         if (line == null || line.isEmpty()) return line;
+
         List<String> tokens = split_line(line);
+
         for (int i = 0; i < tokens.size(); i++) {
             String t = tokens.get(i);
             if (isStringLiteral(t)) continue;
+            if (isLabel(t)) {
+                String base = t.substring(0, t.length() - 1);
+                if (localLabelMap.containsKey(base)) {
+                    tokens.set(i, localLabelMap.get(base) + ":");
+                }
+                continue;
+            }
+            if (localLabelMap.containsKey(t)) {
+                tokens.set(i, localLabelMap.get(t));
+                continue;
+            }
             int varIdx = findVarIndex(t);
             if (varIdx != -1) {
                 String[] var = var_tab.get(varIdx);
@@ -959,7 +984,7 @@ public class Core {
             "IF", "ELSE", "ENDIF", "WHILE",
             "ENDW", "VAR", "SET", "INC",
             "DEC", "BYTE", "WORD", "RESB",
-            "RESW", "CSECT", "EXTREF", "EXTDEF"
+            "RESW", "CSECT", "EXTREF", "EXTDEF", "ADD"
     );
     public boolean isLabel(String label) {
         if (label == null || label.isEmpty()) return false;
@@ -991,5 +1016,25 @@ public class Core {
     }
     public boolean isMacroMnemonic(String mnemonic) {
         return macro_directives.contains(mnemonic.toUpperCase());
+    }
+    private void collectLocalLabels() {
+        int macroIndex = findMacro(current_macro);
+        String[] macroEntry = nam_tab.get(macroIndex);
+        int from = Integer.parseInt(macroEntry[1]) + 1;
+        int to = from + Integer.parseInt(macroEntry[2]) - 1;
+        for (int i = from; i < to; i++) {
+            String line = def_tab.get(i)[1];
+            List<String> tokens = split_line(line);
+            if (tokens.isEmpty()) continue;
+
+            String first = tokens.get(0);
+            if (isLabel(first)) {
+                String base = first.substring(0, first.length() - 1);
+                localLabelMap.put(
+                        base,
+                        base + "_" + unique_label_index
+                );
+            }
+        }
     }
 }
