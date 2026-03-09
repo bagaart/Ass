@@ -30,6 +30,7 @@ public class Core {
     private int unique_label_index = 0;
     private int endFlag = -1;
     private Map<String, String> localLabelMap = new HashMap<>();
+    private List<String> labels = new ArrayList<>();
 
 
     public void one_step(String[] source_code){
@@ -85,6 +86,11 @@ public class Core {
         String[] body = {};
         if (isLabel(tokens.get(idx))) {
             label = tokens.get(idx);
+            if (labels.contains(label.toUpperCase()) && current_macro.isEmpty()) {
+                ERROR = "Ошибка: Повторное определение метки";
+                return false;
+            }
+            labels.add(label.toUpperCase());
             idx++;
         } else if (can_be_macro_name(tokens.get(idx))) {
             for (int i = 0; i < tokens.size(); i++) {
@@ -937,6 +943,7 @@ public class Core {
         can_be_editable = true;
         unique_label_index = 0;
         endFlag = 0;
+        labels.clear();
     }
     public boolean is_letter(char c) {
         return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
